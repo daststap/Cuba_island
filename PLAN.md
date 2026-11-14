@@ -211,15 +211,15 @@ hotkey ─► expanded[clipboard | launcher] (+ input mode)
 6. Проверить на масштабе 100% и 150%; на втором мониторе, если он есть.
 
 ### Этап 2 — Музыка
-- [ ] Модуль `media`: `GlobalSystemMediaTransportControlsSessionManager::RequestAsync`, текущая сессия, подписки на `CurrentSessionChanged`, `MediaPropertiesChanged`, `PlaybackInfoChanged`, `TimelinePropertiesChanged`.
-- [ ] `MediaState`: `title`, `artist`, `album`, `app_id`, `is_playing`, `position_ms`, `duration_ms`, `cover` (PNG/JPEG → data URL, кэшировать по хэшу трека, ≤ 300 КБ).
-- [ ] Команды `toggle/next/prev` через `TryTogglePlayPauseAsync` и т.п.
-- [ ] Debounce событий 150 мс (WinRT часто шлёт пачки).
-- [ ] UI `compact`: маленькая обложка слева, анимированный эквалайзер справа при воспроизведении.
-- [ ] UI `peek` при смене трека: обложка, название, исполнитель.
-- [ ] UI вкладки `home`: обложка, название, исполнитель, прогресс-бар (интерполяция позиции на фронте между событиями), кнопки.
-- [ ] Цвет свечения острова — доминирующий цвет обложки (считать на фронте через canvas, уменьшенная копия 16×16).
-- [ ] Обработка отсутствия сессии: блок плеера скрыт.
+- [x] Модуль `media`: `GlobalSystemMediaTransportControlsSessionManager::RequestAsync`, текущая сессия, подписки на `CurrentSessionChanged`, `MediaPropertiesChanged`, `PlaybackInfoChanged`, `TimelinePropertiesChanged`.
+- [x] `MediaState`: `title`, `artist`, `album`, `app_id`, `is_playing`, `position_ms`, `duration_ms`, `cover` (PNG/JPEG → data URL, кэшировать по хэшу трека, ≤ 300 КБ). Плюс `track_id` (для peek) и `position_updated_at` (для интерполяции); обложка перекодируется встроенным `BitmapEncoder` в JPEG ≤ 320 px.
+- [x] Команды `toggle/next/prev` через `TryTogglePlayPauseAsync` и т.п.
+- [x] Debounce событий 150 мс (WinRT часто шлёт пачки).
+- [x] UI `compact`: маленькая обложка слева, анимированный эквалайзер справа при воспроизведении. Пока есть музыка, часы в пилюле скрыты (как на iPhone); на паузе обложка остаётся, эквалайзер замирает.
+- [x] UI `peek` при смене трека: обложка, название, исполнитель.
+- [x] UI вкладки `home`: обложка, название, исполнитель, прогресс-бар (интерполяция позиции на фронте между событиями), кнопки. Плеер на всю ширину, маленькие часы в углу.
+- [x] Цвет свечения острова — доминирующий цвет обложки (считать на фронте через canvas, уменьшенная копия 16×16).
+- [x] Обработка отсутствия сессии: блок плеера скрыт.
 
 **Ручная проверка:** Spotify, Яндекс Музыка в браузере, YouTube в Chrome/Edge. Трек и обложка обновляются, кнопки работают, после паузы эквалайзер останавливается, после закрытия плеера блок исчезает.
 
@@ -302,3 +302,4 @@ hotkey ─► expanded[clipboard | launcher] (+ input mode)
 | Разный DPI мониторов | Тестировать на 100% и 150% с этапа 1 |
 | Высокий расход памяти WebView2 | Норма ~80–100 МБ; не держать большие картинки в DOM |
 | Остров перекрывает вкладки браузера | Автоскрытие (бэклог) и настройка прозрачности |
+| Браузер не публикует медиасессию в Windows (замечено у Яндекс Браузера) | Остров видит только то, что видит система (Win+A). В Chromium-браузерах нужен включённый флаг `hardware-media-key-handling` |
