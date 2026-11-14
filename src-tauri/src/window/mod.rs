@@ -2,12 +2,15 @@
 
 mod geometry;
 #[cfg(windows)]
+mod input;
+#[cfg(windows)]
 mod tracker;
 #[cfg(windows)]
 mod win32;
 
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 
@@ -24,6 +27,11 @@ pub struct IslandShared {
     rect: Mutex<IslandRect>,
     placement: Mutex<Option<Placement>>,
     hidden: AtomicBool,
+    /// The island accepts keyboard focus (search field, hotkeys).
+    input_mode: AtomicBool,
+    /// Where focus goes back to when input mode ends; also the paste target.
+    #[cfg(windows)]
+    previous_foreground: Mutex<Option<win32::Hwnd>>,
 }
 
 impl IslandShared {
@@ -74,6 +82,94 @@ pub fn set_island_rect(x: f64, y: f64, w: f64, h: f64, shared: State<'_, Shared>
     let rect = IslandRect::new(x, y, w, h)?;
     *shared.rect.lock().unwrap_or_else(PoisonError::into_inner) = rect;
     Ok(())
+}
+
+/// Turns input mode on (the island takes keyboard focus) or off (focus returns
+/// to the window the user was in, if the island still has it).
+#[tauri::command]
+pub fn set_input_mode(app: AppHandle, enabled: bool) -> AppResult<()> {
+    if enabled {
+        enter_input_mode(&app)
+    } else {
+        exit_input_mode(&app)
+    }
+}
+
+fn island(app: &AppHandle) -> AppResult<(WebviewWindow, Shared)> {
+    let window = app
+        .get_webview_window(WINDOW_LABEL)
+        .ok_or_else(|| AppError::Internal(format!("window `{WINDOW_LABEL}` is missing")))?;
+    Ok((window, app.state::<Shared>().inner().clone()))
+}
+
+/// Remembers the user's window and gives the island keyboard focus.
+/// Does nothing while the island is hidden by a full-screen app.
+pub fn enter_input_mode(app: &AppHandle) -> AppResult<()> {
+    let (window, shared) = island(app)?;
+    if shared.hidden.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    #[cfg(windows)]
+    {
+        let own = win32::Hwnd::of(&window)?;
+        // A repeated call while the island already has focus keeps the original target.
+        if let Some(fg) = input::foreground().filter(|fg| *fg != own) {
+            *shared
+                .previous_foreground
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) = Some(fg);
+        }
+    }
+    shared.input_mode.store(true, Ordering::SeqCst);
+    window.set_focusable(true)?;
+    window.set_focus()?;
+    Ok(())
+}
+
+/// Makes the island unfocusable again and returns focus to the user's window —
+/// unless the user already switched elsewhere themselves.
+pub fn exit_input_mode(app: &AppHandle) -> AppResult<()> {
+    let (window, shared) = island(app)?;
+    if !shared.input_mode.swap(false, Ordering::SeqCst) {
+        return Ok(());
+    }
+    #[cfg(windows)]
+    let island_has_focus = input::foreground() == Some(win32::Hwnd::of(&window)?);
+    window.set_focusable(false)?;
+    #[cfg(windows)]
+    if island_has_focus {
+        let previous = *shared
+            .previous_foreground
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(previous) = previous {
+            if !input::activate(previous) {
+                log::warn!("could not return focus to the previous window");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Delay between focusing the target window and pressing Ctrl+V (PLAN.md stage 3).
+const PASTE_DELAY: Duration = Duration::from_millis(50);
+
+/// Leaves input mode (returning focus to the user's window) and presses Ctrl+V there.
+/// Blocks for `PASTE_DELAY`; call it off the main thread.
+pub fn paste_into_previous(app: &AppHandle) -> AppResult<()> {
+    exit_input_mode(app)?;
+    std::thread::sleep(PASTE_DELAY);
+    #[cfg(windows)]
+    if !input::send_paste() {
+        return Err(AppError::Internal("не удалось отправить Ctrl+V".into()));
+    }
+    Ok(())
+}
+
+/// Whether the island is currently hidden because a full-screen app is in front.
+pub fn is_hidden(app: &AppHandle) -> bool {
+    app.try_state::<Shared>()
+        .is_some_and(|s| s.hidden.load(Ordering::SeqCst))
 }
 
 /// Places the window at the top centre of the target monitor (PLAN.md §4.3).

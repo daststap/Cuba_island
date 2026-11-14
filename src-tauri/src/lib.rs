@@ -1,7 +1,10 @@
 //! Application assembly: plugins, commands and startup.
 
+mod clipboard;
 pub mod error;
+mod hotkeys;
 mod media;
+mod storage;
 mod system;
 mod thread;
 mod window;
@@ -37,17 +40,27 @@ pub fn run() {
         }))
         .plugin(log_plugin())
         .plugin(tauri_plugin_opener::init())
+        .plugin(hotkeys::plugin())
         .invoke_handler(tauri::generate_handler![
             window::set_island_rect,
+            window::set_input_mode,
             system::get_battery,
             media::media_get_state,
             media::media_command,
+            clipboard::clipboard_list,
+            clipboard::clipboard_copy,
+            clipboard::clipboard_paste,
+            clipboard::clipboard_pin,
+            clipboard::clipboard_delete,
+            clipboard::clipboard_clear,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
             window::setup(app.handle())?;
             system::spawn_battery_watcher(app.handle().clone());
             media::start(app.handle());
+            clipboard::start(app.handle())?;
+            hotkeys::register(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!());

@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-log = "2"
@@ -26,6 +26,11 @@ log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+clipboard-master = "4.1.0"
+arboard = "3.7.0"
+tauri-plugin-global-shortcut = "2.3.2"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
@@ -34,8 +39,12 @@ windows = { version = "0.62", features = [
   "Media_Control",
   "Storage_Streams",
   "Win32_Foundation",
-  "Win32_System_WinRT",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
   "Win32_System_Power",
+  "Win32_System_Threading",
+  "Win32_System_WinRT",
+  "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }

@@ -33,7 +33,7 @@ static DISPLAY_CHANGED: OnceLock<Sender<()>> = OnceLock::new();
 const SUBCLASS_ID: usize = 0xE5CA;
 
 /// A window handle that can be moved between threads (Win32 handles are process-global).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Hwnd(isize);
 
 impl Hwnd {
@@ -41,7 +41,11 @@ impl Hwnd {
         Ok(Self(window.hwnd()?.0 as isize))
     }
 
-    fn raw(self) -> HWND {
+    pub fn from_raw(hwnd: HWND) -> Self {
+        Self(hwnd.0 as isize)
+    }
+
+    pub fn raw(self) -> HWND {
         HWND(self.0 as *mut c_void)
     }
 }
