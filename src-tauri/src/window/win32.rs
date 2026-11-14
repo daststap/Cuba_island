@@ -13,8 +13,8 @@ use std::sync::OnceLock;
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::UI::Shell::{
-    DefSubclassProc, SHQueryUserNotificationState, SetWindowSubclass, QUNS_BUSY,
-    QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
+    DefSubclassProc, SHQueryUserNotificationState, SetWindowSubclass,
+    QUERY_USER_NOTIFICATION_STATE, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetWindowLongPtrW, SetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, MA_NOACTIVATE,
@@ -85,22 +85,26 @@ pub fn cursor_pos() -> Option<(i32, i32)> {
     Some((point.x, point.y))
 }
 
-/// Whether a full-screen app, D3D game or presentation is in front (PLAN.md §4.4),
-/// including borderless-windowed games, which Windows itself does not report.
-pub fn fullscreen_app_active() -> bool {
+/// Whether a full-screen app is in front on the island's monitor (PLAN.md §4.4).
+///
+/// `QUNS_BUSY` is deliberately ignored: live wallpapers (Wallpaper Engine) keep it set
+/// permanently, which would hide the island forever. Exclusive D3D full screen and
+/// presentation mode are trusted; everything else (borderless games, full-screen
+/// video in a browser) is detected by looking at the foreground window itself.
+pub fn fullscreen_app_active(island: Hwnd) -> bool {
     // SAFETY: takes no pointers; the result is returned by value.
     let reported = match unsafe { SHQueryUserNotificationState() } {
-        Ok(state) => {
-            state == QUNS_BUSY
-                || state == QUNS_RUNNING_D3D_FULL_SCREEN
-                || state == QUNS_PRESENTATION_MODE
-        }
+        Ok(state) => is_trusted_fullscreen_state(state),
         Err(err) => {
             log::debug!("SHQueryUserNotificationState failed: {err}");
             false
         }
     };
-    reported || borderless_fullscreen_in_front()
+    reported || borderless_fullscreen_in_front(island)
+}
+
+fn is_trusted_fullscreen_state(state: QUERY_USER_NOTIFICATION_STATE) -> bool {
+    state == QUNS_RUNNING_D3D_FULL_SCREEN || state == QUNS_PRESENTATION_MODE
 }
 
 /// A screen rectangle: left, top, right, bottom.
@@ -120,7 +124,7 @@ fn is_shell_class(class: &str) -> bool {
     )
 }
 
-fn borderless_fullscreen_in_front() -> bool {
+fn borderless_fullscreen_in_front(island: Hwnd) -> bool {
     use windows::Win32::Foundation::RECT;
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONULL,
@@ -148,7 +152,9 @@ fn borderless_fullscreen_in_front() -> bool {
             return false;
         }
         let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
-        if monitor.is_invalid() {
+        // Only a full-screen window on the island's own monitor hides it.
+        if monitor.is_invalid() || monitor != MonitorFromWindow(island.raw(), MONITOR_DEFAULTTONULL)
+        {
             return false;
         }
         let mut info = MONITORINFO {
@@ -261,6 +267,16 @@ mod tests {
         let right = (1920, 0, 4480, 1440);
         assert!(covers_monitor(right, right, false));
         assert!(!covers_monitor(screen, right, false));
+    }
+
+    #[test]
+    fn trusts_only_unambiguous_notification_states() {
+        use windows::Win32::UI::Shell::{QUNS_ACCEPTS_NOTIFICATIONS, QUNS_BUSY};
+        assert!(is_trusted_fullscreen_state(QUNS_RUNNING_D3D_FULL_SCREEN));
+        assert!(is_trusted_fullscreen_state(QUNS_PRESENTATION_MODE));
+        // Live wallpapers keep BUSY set all the time.
+        assert!(!is_trusted_fullscreen_state(QUNS_BUSY));
+        assert!(!is_trusted_fullscreen_state(QUNS_ACCEPTS_NOTIFICATIONS));
     }
 
     #[test]

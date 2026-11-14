@@ -73,8 +73,8 @@ pub fn spawn_fullscreen_watcher(app: AppHandle, hwnd: Hwnd, shared: Shared) {
     spawn_supervised("island-fullscreen", move || {
         let mut hidden = shared.hidden.load(Ordering::SeqCst);
         loop {
-            let busy =
-                shared.hide_in_fullscreen.load(Ordering::SeqCst) && win32::fullscreen_app_active();
+            let busy = shared.hide_in_fullscreen.load(Ordering::SeqCst)
+                && win32::fullscreen_app_active(hwnd);
             if busy != hidden {
                 hidden = busy;
                 shared.hidden.store(hidden, Ordering::SeqCst);
