@@ -12,6 +12,33 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* Equalizer: bars bounce while playing and rest low on pause. */
+@keyframes eq-bounce {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.eq-bar {
+  transform-origin: bottom;
+  transform: scaleY(0.3);
+}
+
+.eq[data-playing="true"] .eq-bar {
+  animation: eq-bounce var(--eq-duration, 0.9s) ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eq[data-playing="true"] .eq-bar {
+    animation: none;
+    transform: scaleY(0.7);
+  }
+}
+
 html,
 body,
 #root {

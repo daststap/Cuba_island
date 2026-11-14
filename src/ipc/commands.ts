@@ -5,7 +5,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /** Mirrors `AppError::kind()` in `src-tauri/src/error.rs`. */
-export type AppErrorKind = "io" | "tauri" | "invalid_argument" | "internal";
+export type AppErrorKind =
+  "io" | "tauri" | "invalid_argument" | "windows" | "unavailable" | "internal";
 
 /** Mirrors the serialized form of `AppError`. */
 export interface AppError {
@@ -37,6 +38,33 @@ export interface Battery {
   percent: number;
   charging: boolean;
   pluggedIn: boolean;
+}
+
+/** Mirrors `media::MediaState`. */
+export interface MediaState {
+  /** Changes whenever the track changes. */
+  trackId: string;
+  title: string;
+  artist: string;
+  album: string;
+  appId: string;
+  isPlaying: boolean;
+  positionMs: number;
+  durationMs: number;
+  /** Unix ms at which `positionMs` was measured. */
+  positionUpdatedAt: number;
+  /** JPEG data URL. */
+  cover: string | null;
+}
+
+export type MediaCommand = "toggle" | "next" | "prev";
+
+export function mediaGetState(): Promise<MediaState | null> {
+  return invoke("media_get_state");
+}
+
+export function mediaCommand(cmd: MediaCommand): Promise<void> {
+  return invoke("media_command", { cmd });
 }
 
 export function setIslandRect(rect: IslandRect): Promise<void> {

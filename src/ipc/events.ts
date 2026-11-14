@@ -3,7 +3,7 @@
  * unsubscribe function suitable for a `useEffect` cleanup.
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Battery } from "./commands";
+import type { Battery, MediaState } from "./commands";
 
 export interface HoverPayload {
   inside: boolean;
@@ -19,6 +19,7 @@ interface EventMap {
   "island://edge-push": null;
   "island://visibility": VisibilityPayload;
   "system://battery": Battery | null;
+  "media://changed": MediaState | null;
 }
 
 function subscribe<K extends keyof EventMap>(
@@ -52,3 +53,6 @@ export const onVisibility = (handler: (p: VisibilityPayload) => void) =>
 
 export const onBattery = (handler: (p: Battery | null) => void) =>
   subscribe("system://battery", handler);
+
+export const onMediaChanged = (handler: (p: MediaState | null) => void) =>
+  subscribe("media://changed", handler);

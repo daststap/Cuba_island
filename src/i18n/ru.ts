@@ -14,4 +14,14 @@ export const ru = {
     charging: "заряжается",
     pluggedIn: "подключена к сети",
   },
+  media: {
+    nowPlaying: "Сейчас играет",
+    cover: "Обложка",
+    unknownArtist: "Неизвестный исполнитель",
+    progress: "Позиция в треке",
+    play: "Воспроизвести",
+    pause: "Пауза",
+    next: "Следующий трек",
+    prev: "Предыдущий трек",
+  },
 } as const;

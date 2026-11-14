@@ -35,6 +35,24 @@ describe("islandReducer", () => {
     expect(islandReducer(compact, { type: "selectTab", tab: "settings" })).toBe(compact);
   });
 
+  it("peeks only from compact and ends back in compact", () => {
+    const peek = islandReducer(compact, { type: "peek", kind: "media" });
+    expect(peek).toEqual({ mode: "peek", kind: "media" });
+    expect(islandReducer(peek, { type: "endPeek" })).toEqual(compact);
+    expect(islandReducer(home, { type: "peek", kind: "media" })).toBe(home);
+    expect(islandReducer({ mode: "hidden" }, { type: "peek", kind: "media" })).toEqual({
+      mode: "hidden",
+    });
+  });
+
+  it("expands from a peek, and endPeek does not close the panel", () => {
+    const peek: IslandState = { mode: "peek", kind: "media" };
+    const expanded = islandReducer(peek, { type: "expand" });
+    expect(expanded).toEqual(home);
+    expect(islandReducer(expanded, { type: "endPeek" })).toBe(expanded);
+    expect(islandReducer(peek, { type: "collapse" })).toEqual(compact);
+  });
+
   it("ignores expand while hidden and returns to compact on show", () => {
     const hidden = islandReducer(home, { type: "hide" });
     expect(hidden).toEqual({ mode: "hidden" });

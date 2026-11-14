@@ -39,8 +39,10 @@ export function createHoverIntent(
       inside = next;
       const mode = getState().mode;
       if (inside) {
-        if (mode === "compact") schedule({ type: "expand" }, HOVER_EXPAND_DELAY_MS);
-        else cancel();
+        // Hovering a peek opens the panel as well.
+        if (mode === "compact" || mode === "peek") {
+          schedule({ type: "expand" }, HOVER_EXPAND_DELAY_MS);
+        } else cancel();
       } else if (mode === "expanded") {
         schedule({ type: "collapse" }, LEAVE_COLLAPSE_DELAY_MS);
       } else {
