@@ -110,10 +110,11 @@ fn is_trusted_fullscreen_state(state: QUERY_USER_NOTIFICATION_STATE) -> bool {
 /// A screen rectangle: left, top, right, bottom.
 type Bounds = (i32, i32, i32, i32);
 
-/// A borderless full-screen window covers its monitor exactly and has no title bar.
-/// Maximized windows have a caption and overhang the screen by their frame.
-fn covers_monitor(window: Bounds, monitor: Bounds, has_caption: bool) -> bool {
-    !has_caption && window == monitor
+/// A borderless full-screen window covers its monitor exactly, has no title bar and is
+/// not merely maximized. (Maximized frameless apps — Discord, VS Code, browsers — also
+/// cover the whole monitor when the taskbar auto-hides, but they are not full screen.)
+fn covers_monitor(window: Bounds, monitor: Bounds, has_caption: bool, maximized: bool) -> bool {
+    !has_caption && !maximized && window == monitor
 }
 
 /// Desktop and shell windows also cover the screen but are not apps.
@@ -130,8 +131,8 @@ fn borderless_fullscreen_in_front(island: Hwnd) -> bool {
         GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONULL,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetClassNameW, GetForegroundWindow, GetWindowLongW, GetWindowRect, IsIconic, GWL_STYLE,
-        WS_CAPTION,
+        GetClassNameW, GetForegroundWindow, GetWindowLongW, GetWindowRect, IsIconic, IsZoomed,
+        GWL_STYLE, WS_CAPTION,
     };
 
     // SAFETY: every call below takes the foreground HWND (or derived handles) and
@@ -170,6 +171,7 @@ fn borderless_fullscreen_in_front(island: Hwnd) -> bool {
             (rect.left, rect.top, rect.right, rect.bottom),
             (m.left, m.top, m.right, m.bottom),
             style & WS_CAPTION.0 == WS_CAPTION.0,
+            IsZoomed(hwnd).as_bool(),
         )
     }
 }
@@ -258,15 +260,17 @@ mod tests {
     #[test]
     fn detects_borderless_fullscreen_but_not_maximized_windows() {
         let screen = (0, 0, 1920, 1080);
-        assert!(covers_monitor(screen, screen, false));
+        assert!(covers_monitor(screen, screen, false, false));
         // Maximized: has a caption and overhangs by the frame.
-        assert!(!covers_monitor((-8, -8, 1928, 1040), screen, true));
+        assert!(!covers_monitor((-8, -8, 1928, 1040), screen, true, true));
+        // Maximized frameless app with an auto-hidden taskbar (Discord, VS Code).
+        assert!(!covers_monitor(screen, screen, false, true));
         // A borderless window that is not full size.
-        assert!(!covers_monitor((0, 0, 1280, 720), screen, false));
+        assert!(!covers_monitor((0, 0, 1280, 720), screen, false, false));
         // Second monitor to the right.
         let right = (1920, 0, 4480, 1440);
-        assert!(covers_monitor(right, right, false));
-        assert!(!covers_monitor(screen, right, false));
+        assert!(covers_monitor(right, right, false, false));
+        assert!(!covers_monitor(screen, right, false, false));
     }
 
     #[test]
