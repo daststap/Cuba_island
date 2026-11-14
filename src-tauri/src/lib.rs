@@ -7,6 +7,9 @@ mod hotkeys;
 mod launcher;
 mod media;
 mod settings;
+mod shelf;
+#[cfg(windows)]
+mod shell;
 mod storage;
 mod system;
 mod thread;
@@ -77,6 +80,12 @@ pub fn run() {
             claude::claude_status,
             claude::claude_hooks_status,
             claude::claude_hooks_set,
+            shelf::shelf_list,
+            shelf::shelf_add,
+            shelf::shelf_remove,
+            shelf::shelf_clear,
+            shelf::shelf_open,
+            shelf::shelf_drag_out,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
@@ -91,7 +100,8 @@ pub fn run() {
             media::start(handle);
             let db = storage::init(handle)?;
             clipboard::start(handle, db.clone(), settings.history_limit as usize)?;
-            launcher::start(handle, db)?;
+            launcher::start(handle, db.clone())?;
+            shelf::start(handle, db)?;
             hotkeys::register(
                 handle,
                 &settings.clipboard_hotkey,

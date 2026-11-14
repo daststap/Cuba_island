@@ -51,6 +51,12 @@ const MIGRATIONS: &[&str] = &[
         count       INTEGER NOT NULL DEFAULT 0,
         last_at     INTEGER NOT NULL
     );",
+    // 3: file shelf — references to files the user dropped on the island
+    "CREATE TABLE shelf (
+        id          INTEGER PRIMARY KEY,
+        path        TEXT    NOT NULL UNIQUE,
+        added_at    INTEGER NOT NULL
+    );",
 ];
 
 impl From<rusqlite::Error> for AppError {
