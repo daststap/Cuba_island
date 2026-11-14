@@ -1,6 +1,7 @@
 //! Application assembly: plugins, commands and startup.
 
 pub mod error;
+mod media;
 mod system;
 mod thread;
 mod window;
@@ -39,11 +40,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             window::set_island_rect,
             system::get_battery,
+            media::media_get_state,
+            media::media_command,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
             window::setup(app.handle())?;
             system::spawn_battery_watcher(app.handle().clone());
+            media::start(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!());

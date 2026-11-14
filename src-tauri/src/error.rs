@@ -17,6 +17,14 @@ pub enum AppError {
     #[error("неверный аргумент: {0}")]
     InvalidArgument(String),
 
+    #[cfg(windows)]
+    #[error("ошибка Windows: {0}")]
+    Windows(#[from] windows::core::Error),
+
+    /// The requested thing is not available right now (no player, etc.).
+    #[error("{0}")]
+    Unavailable(String),
+
     #[error("{0}")]
     Internal(String),
 }
@@ -28,6 +36,9 @@ impl AppError {
             Self::Io(_) => "io",
             Self::Tauri(_) => "tauri",
             Self::InvalidArgument(_) => "invalid_argument",
+            #[cfg(windows)]
+            Self::Windows(_) => "windows",
+            Self::Unavailable(_) => "unavailable",
             Self::Internal(_) => "internal",
         }
     }
