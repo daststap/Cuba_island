@@ -85,10 +85,11 @@ pub fn cursor_pos() -> Option<(i32, i32)> {
     Some((point.x, point.y))
 }
 
-/// Whether a full-screen app, D3D game or presentation is in front (PLAN.md §4.4).
+/// Whether a full-screen app, D3D game or presentation is in front (PLAN.md §4.4),
+/// including borderless-windowed games, which Windows itself does not report.
 pub fn fullscreen_app_active() -> bool {
     // SAFETY: takes no pointers; the result is returned by value.
-    match unsafe { SHQueryUserNotificationState() } {
+    let reported = match unsafe { SHQueryUserNotificationState() } {
         Ok(state) => {
             state == QUNS_BUSY
                 || state == QUNS_RUNNING_D3D_FULL_SCREEN
@@ -98,6 +99,72 @@ pub fn fullscreen_app_active() -> bool {
             log::debug!("SHQueryUserNotificationState failed: {err}");
             false
         }
+    };
+    reported || borderless_fullscreen_in_front()
+}
+
+/// A screen rectangle: left, top, right, bottom.
+type Bounds = (i32, i32, i32, i32);
+
+/// A borderless full-screen window covers its monitor exactly and has no title bar.
+/// Maximized windows have a caption and overhang the screen by their frame.
+fn covers_monitor(window: Bounds, monitor: Bounds, has_caption: bool) -> bool {
+    !has_caption && window == monitor
+}
+
+/// Desktop and shell windows also cover the screen but are not apps.
+fn is_shell_class(class: &str) -> bool {
+    matches!(
+        class,
+        "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"
+    )
+}
+
+fn borderless_fullscreen_in_front() -> bool {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONULL,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClassNameW, GetForegroundWindow, GetWindowLongW, GetWindowRect, IsIconic, GWL_STYLE,
+        WS_CAPTION,
+    };
+
+    // SAFETY: every call below takes the foreground HWND (or derived handles) and
+    // writes only into local, correctly sized buffers; stale handles just fail.
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.is_invalid() || IsIconic(hwnd).as_bool() {
+            return false;
+        }
+        let mut class = [0_u16; 64];
+        let len = GetClassNameW(hwnd, &mut class);
+        let class = String::from_utf16_lossy(&class[..usize::try_from(len).unwrap_or(0)]);
+        if is_shell_class(&class) {
+            return false;
+        }
+        let mut rect = RECT::default();
+        if GetWindowRect(hwnd, &mut rect).is_err() {
+            return false;
+        }
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
+        if monitor.is_invalid() {
+            return false;
+        }
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+            return false;
+        }
+        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+        let m = info.rcMonitor;
+        covers_monitor(
+            (rect.left, rect.top, rect.right, rect.bottom),
+            (m.left, m.top, m.right, m.bottom),
+            style & WS_CAPTION.0 == WS_CAPTION.0,
+        )
     }
 }
 
@@ -180,6 +247,28 @@ mod tests {
             0,
             "NOACTIVATE is owned by tao and kept"
         );
+    }
+
+    #[test]
+    fn detects_borderless_fullscreen_but_not_maximized_windows() {
+        let screen = (0, 0, 1920, 1080);
+        assert!(covers_monitor(screen, screen, false));
+        // Maximized: has a caption and overhangs by the frame.
+        assert!(!covers_monitor((-8, -8, 1928, 1040), screen, true));
+        // A borderless window that is not full size.
+        assert!(!covers_monitor((0, 0, 1280, 720), screen, false));
+        // Second monitor to the right.
+        let right = (1920, 0, 4480, 1440);
+        assert!(covers_monitor(right, right, false));
+        assert!(!covers_monitor(screen, right, false));
+    }
+
+    #[test]
+    fn ignores_desktop_and_taskbar() {
+        assert!(is_shell_class("Progman"));
+        assert!(is_shell_class("WorkerW"));
+        assert!(is_shell_class("Shell_TrayWnd"));
+        assert!(!is_shell_class("SDL_app"));
     }
 
     #[test]
