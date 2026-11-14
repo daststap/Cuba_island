@@ -1,6 +1,8 @@
 import { AnimatePresence, motion, type Transition } from "motion/react";
 import { useRef, type ReactNode } from "react";
 import { BatteryIndicator } from "../features/battery/BatteryIndicator";
+import { ClipboardPeek, ClipboardTab } from "../features/clipboard/ClipboardTab";
+import { useClipboardSync } from "../features/clipboard/store";
 import { Clock, LongDate } from "../features/clock/Clock";
 import { useMediaStore, useMediaSync } from "../features/media/store";
 import { useCoverColor } from "../features/media/useCoverColor";
@@ -16,6 +18,7 @@ import { useIslandRect } from "./useIslandRect";
 const SHAPES = {
   compact: { width: 200, height: 36, radius: 18 },
   peek: { width: 360, height: 68, radius: 28 },
+  clipboardPeek: { width: 320, height: 44, radius: 22 },
   expanded: { width: 640, height: 360, radius: 32 },
 } as const;
 
@@ -25,6 +28,7 @@ const FADE: Transition = { duration: 0.14 };
 export function Island() {
   useIslandEvents();
   useMediaSync();
+  useClipboardSync();
   const state = useIslandStore((s) => s.state);
   const dispatch = useIslandStore((s) => s.dispatch);
   const media = useMediaStore((s) => s.media);
@@ -32,10 +36,17 @@ export function Island() {
   const ref = useRef<HTMLDivElement>(null);
   useIslandRect(ref);
 
+  const peekKind = state.mode === "peek" ? state.kind : null;
   // A media peek without media (player closed meanwhile) shows as compact.
-  const mode = state.mode === "peek" && !media ? "compact" : state.mode;
+  const mode = peekKind === "media" && !media ? "compact" : state.mode;
   const shape =
-    mode === "expanded" ? SHAPES.expanded : mode === "peek" ? SHAPES.peek : SHAPES.compact;
+    mode === "expanded"
+      ? SHAPES.expanded
+      : mode === "peek"
+        ? peekKind === "clipboard"
+          ? SHAPES.clipboardPeek
+          : SHAPES.peek
+        : SHAPES.compact;
   const glowAlpha = media?.isPlaying ? 0.55 : 0.3;
   const shadow = glow
     ? `0 6px 30px -6px rgb(${glow.join(" ")} / ${String(glowAlpha)}), var(--island-shadow)`
@@ -52,6 +63,8 @@ export function Island() {
         }}
       />
     );
+  } else if (mode === "peek" && peekKind === "clipboard") {
+    content = <ClipboardPeek />;
   } else if (mode === "peek" && media) {
     content = <MediaPeek media={media} />;
   } else {
@@ -76,7 +89,7 @@ export function Island() {
       >
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.div
-            key={mode}
+            key={peekKind ? `peek-${peekKind}` : mode}
             className="absolute inset-0"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1, transition: { ...FADE, delay: 0.07 } }}
@@ -150,9 +163,14 @@ function ExpandedView({
         )}
       </div>
 
-      <div role="tabpanel" className="flex flex-1 flex-col items-center justify-center">
+      <div
+        role="tabpanel"
+        className="flex min-h-0 flex-1 flex-col items-center justify-center pt-3"
+      >
         {player ? (
           <MediaPlayer media={media} />
+        ) : tab === "clipboard" ? (
+          <ClipboardTab />
         ) : tab === "home" ? (
           <>
             <Clock className="text-7xl font-light tracking-tight" />

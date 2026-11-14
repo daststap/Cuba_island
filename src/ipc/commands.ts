@@ -67,6 +67,50 @@ export function mediaCommand(cmd: MediaCommand): Promise<void> {
   return invoke("media_command", { cmd });
 }
 
+/** Mirrors `clipboard::store::ClipItem`. */
+export interface ClipItem {
+  id: number;
+  kind: "text" | "image";
+  /** Up to 400 characters of the text. */
+  text: string | null;
+  /** Absolute path of the 256 px preview; load it via `convertFileSrc`. */
+  thumbPath: string | null;
+  pinned: boolean;
+  createdAt: number;
+  usedAt: number;
+}
+
+export function clipboardList(query: string, limit: number, offset = 0): Promise<ClipItem[]> {
+  return invoke("clipboard_list", { query: query || null, limit, offset });
+}
+
+/** Puts a clip on the clipboard without pasting. */
+export function clipboardCopy(id: number): Promise<void> {
+  return invoke("clipboard_copy", { id });
+}
+
+/** Puts a clip on the clipboard, returns focus to the previous window and pastes there. */
+export function clipboardPaste(id: number): Promise<void> {
+  return invoke("clipboard_paste", { id });
+}
+
+export function clipboardPin(id: number, pinned: boolean): Promise<void> {
+  return invoke("clipboard_pin", { id, pinned });
+}
+
+export function clipboardDelete(id: number): Promise<void> {
+  return invoke("clipboard_delete", { id });
+}
+
+export function clipboardClear(): Promise<void> {
+  return invoke("clipboard_clear");
+}
+
+/** Lets the island take keyboard focus (true) or gives focus back (false). */
+export function setInputMode(enabled: boolean): Promise<void> {
+  return invoke("set_input_mode", { enabled });
+}
+
 export function setIslandRect(rect: IslandRect): Promise<void> {
   return invoke("set_island_rect", { ...rect });
 }

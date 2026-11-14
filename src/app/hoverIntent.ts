@@ -15,9 +15,14 @@ export interface HoverIntent {
   dispose: () => void;
 }
 
+/**
+ * @param isPinnedOpen while true (e.g. the user is typing in the island), leaving
+ *   the island does not collapse it.
+ */
 export function createHoverIntent(
   getState: () => IslandState,
   dispatch: (event: IslandEvent) => void,
+  isPinnedOpen: () => boolean = () => false,
 ): HoverIntent {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let inside = false;
@@ -43,7 +48,7 @@ export function createHoverIntent(
         if (mode === "compact" || mode === "peek") {
           schedule({ type: "expand" }, HOVER_EXPAND_DELAY_MS);
         } else cancel();
-      } else if (mode === "expanded") {
+      } else if (mode === "expanded" && !isPinnedOpen()) {
         schedule({ type: "collapse" }, LEAVE_COLLAPSE_DELAY_MS);
       } else {
         cancel();

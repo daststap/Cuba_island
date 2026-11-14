@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { reportError, setInputMode } from "../ipc/commands";
 import {
   initialIslandState,
   islandReducer,
@@ -8,19 +9,29 @@ import {
 } from "./islandMachine";
 
 /** How long a peek stays open (PLAN.md §4.6). */
-export const PEEK_DURATION_MS = 3000;
+export const PEEK_DURATION_MS: Record<PeekKind, number> = {
+  media: 3000,
+  clipboard: 1500,
+};
 
 interface IslandStore {
   state: IslandState;
+  /** The island has keyboard focus (search field / hotkey). */
+  inputMode: boolean;
   dispatch: (event: IslandEvent) => void;
-  /** Shows a peek for `PEEK_DURATION_MS`; a new peek restarts the timer. */
+  /** Shows a peek; a new peek restarts the timer. */
   peek: (kind: PeekKind) => void;
+  /** Asks Rust for keyboard focus (remembering the user's window). */
+  enterInput: () => void;
+  /** Gives keyboard focus back to the user's window. */
+  leaveInput: () => void;
 }
 
 let peekTimer: ReturnType<typeof setTimeout> | undefined;
 
 export const useIslandStore = create<IslandStore>()((set, get) => ({
   state: initialIslandState,
+  inputMode: false,
   dispatch: (event) => {
     set((store) => {
       const next = islandReducer(store.state, event);
@@ -34,6 +45,25 @@ export const useIslandStore = create<IslandStore>()((set, get) => ({
     clearTimeout(peekTimer);
     peekTimer = setTimeout(() => {
       dispatch({ type: "endPeek" });
-    }, PEEK_DURATION_MS);
+    }, PEEK_DURATION_MS[kind]);
+  },
+  enterInput: () => {
+    if (get().inputMode) return;
+    set({ inputMode: true });
+    setInputMode(true).catch((error: unknown) => {
+      reportError("set_input_mode", error);
+    });
+  },
+  leaveInput: () => {
+    if (!get().inputMode) return;
+    set({ inputMode: false });
+    setInputMode(false).catch((error: unknown) => {
+      reportError("set_input_mode", error);
+    });
   },
 }));
+
+// Whenever the panel closes, keyboard focus goes back to where the user was.
+useIslandStore.subscribe((store, prev) => {
+  if (prev.state.mode === "expanded" && store.state.mode !== "expanded") store.leaveInput();
+});

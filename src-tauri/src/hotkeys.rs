@@ -31,6 +31,7 @@ fn on_shortcut(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
     if event.state != ShortcutState::Pressed || *shortcut != clipboard_shortcut() {
         return;
     }
+    log::debug!("clipboard hotkey pressed");
     if window::is_hidden(app) {
         return;
     }

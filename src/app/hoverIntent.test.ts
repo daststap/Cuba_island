@@ -58,6 +58,25 @@ describe("hover intent", () => {
     expect(mode()).toBe("compact");
   });
 
+  it("stays open on leave while pinned open (typing)", () => {
+    let state: IslandState = { mode: "expanded", tab: "clipboard" };
+    let pinned = true;
+    const intent = createHoverIntent(
+      () => state,
+      (event) => {
+        state = islandReducer(state, event);
+      },
+      () => pinned,
+    );
+    intent.pointer(false);
+    vi.advanceTimersByTime(1000);
+    expect(state.mode).toBe("expanded");
+    pinned = false;
+    intent.pointer(false);
+    vi.advanceTimersByTime(LEAVE_COLLAPSE_DELAY_MS);
+    expect(state.mode).toBe("compact");
+  });
+
   it("expands immediately on edge push and collapses if never hovered", () => {
     const { intent, mode } = setup();
     intent.edgePush();

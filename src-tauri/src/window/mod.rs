@@ -123,6 +123,11 @@ pub fn enter_input_mode(app: &AppHandle) -> AppResult<()> {
     shared.input_mode.store(true, Ordering::SeqCst);
     window.set_focusable(true)?;
     window.set_focus()?;
+    #[cfg(windows)]
+    log::debug!(
+        "input mode on; island has focus: {}",
+        input::foreground() == Some(win32::Hwnd::of(&window)?)
+    );
     Ok(())
 }
 

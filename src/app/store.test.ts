@@ -16,7 +16,7 @@ describe("island store peek", () => {
   it("returns to compact after the peek duration", () => {
     useIslandStore.getState().peek("media");
     expect(mode()).toBe("peek");
-    vi.advanceTimersByTime(PEEK_DURATION_MS - 1);
+    vi.advanceTimersByTime(PEEK_DURATION_MS.media - 1);
     expect(mode()).toBe("peek");
     vi.advanceTimersByTime(1);
     expect(mode()).toBe("compact");
@@ -33,10 +33,19 @@ describe("island store peek", () => {
     expect(mode()).toBe("compact");
   });
 
+  it("uses a shorter peek for copies and lets it replace a media peek", () => {
+    const { peek } = useIslandStore.getState();
+    peek("media");
+    peek("clipboard");
+    expect(useIslandStore.getState().state).toEqual({ mode: "peek", kind: "clipboard" });
+    vi.advanceTimersByTime(PEEK_DURATION_MS.clipboard);
+    expect(mode()).toBe("compact");
+  });
+
   it("does not peek over the open panel", () => {
     useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
     useIslandStore.getState().peek("media");
-    vi.advanceTimersByTime(PEEK_DURATION_MS);
+    vi.advanceTimersByTime(PEEK_DURATION_MS.media);
     expect(mode()).toBe("expanded");
   });
 });

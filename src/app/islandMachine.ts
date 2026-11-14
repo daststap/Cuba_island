@@ -6,8 +6,8 @@ export type Tab = "home" | "clipboard" | "launcher" | "settings";
 
 export const TABS: readonly Tab[] = ["home", "clipboard", "launcher", "settings"];
 
-/** What a peek is about. Clipboard ("Скопировано") joins in stage 3. */
-export type PeekKind = "media";
+/** What a peek is about: a track change or a fresh copy. */
+export type PeekKind = "media" | "clipboard";
 
 export type IslandState =
   | { mode: "hidden" }
@@ -46,7 +46,12 @@ export function islandReducer(state: IslandState, event: IslandEvent): IslandSta
         : state;
     case "peek":
       // A peek never interrupts the open panel and never shows while hidden.
-      return state.mode === "compact" ? { mode: "peek", kind: event.kind } : state;
+      if (state.mode === "compact") return { mode: "peek", kind: event.kind };
+      // A newer peek of another kind replaces the current one.
+      if (state.mode === "peek" && state.kind !== event.kind) {
+        return { mode: "peek", kind: event.kind };
+      }
+      return state;
     case "endPeek":
       return state.mode === "peek" ? { mode: "compact" } : state;
   }
