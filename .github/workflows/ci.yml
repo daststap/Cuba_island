@@ -51,5 +51,8 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
+      # Update signing needs the private key, which CI on pull requests does not have.
       - name: Build app (NSIS)
         uses: tauri-apps/tauri-action@v0
+        with:
+          args: --config src-tauri/tauri.ci.conf.json
