@@ -185,6 +185,25 @@ pub fn rebind(app: &AppHandle, clipboard_key: &str, launcher_key: &str) -> AppRe
     Ok(registered.status.clone())
 }
 
+/// Temporarily releases (or restores) our hotkeys, so the settings field can record
+/// a combination that is currently bound — otherwise the OS would swallow it.
+#[tauri::command]
+pub fn hotkeys_pause(
+    paused: bool,
+    app: AppHandle,
+    state: State<'_, Mutex<Registered>>,
+) -> AppResult<()> {
+    let registered = state.lock().unwrap_or_else(PoisonError::into_inner);
+    for (shortcut, _) in &registered.bindings {
+        if paused {
+            let _ = app.global_shortcut().unregister(*shortcut);
+        } else if !app.global_shortcut().is_registered(*shortcut) {
+            try_register(&app, *shortcut);
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn hotkeys_status(state: State<'_, Mutex<Registered>>) -> AppResult<HotkeyStatus> {
     Ok(state

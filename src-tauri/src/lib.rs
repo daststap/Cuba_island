@@ -67,6 +67,7 @@ pub fn run() {
             launcher::launcher_search,
             launcher::launcher_run,
             hotkeys::hotkeys_status,
+            hotkeys::hotkeys_pause,
             settings::settings_get,
             settings::settings_set,
             settings::monitors_list,

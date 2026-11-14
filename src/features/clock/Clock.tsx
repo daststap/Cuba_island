@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSettingsStore } from "../settings/store";
 import { formatLongDate, formatTime, msUntilNextMinute } from "./format";
 
 /** Current time, re-rendering only this subtree once a minute, on the minute. */
@@ -17,9 +18,10 @@ function useMinute(): Date {
 
 export function Clock({ className }: { className?: string }) {
   const now = useMinute();
+  const hour12 = useSettingsStore((s) => s.settings?.hour12 ?? false);
   return (
     <time className={`tabular-nums ${className ?? ""}`} dateTime={now.toISOString()}>
-      {formatTime(now)}
+      {formatTime(now, hour12)}
     </time>
   );
 }

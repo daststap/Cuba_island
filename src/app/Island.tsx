@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, type Transition } from "motion/react";
+import { AnimatePresence, motion, type MotionStyle, type Transition } from "motion/react";
 import { useRef, type ReactNode } from "react";
 import { BatteryIndicator } from "../features/battery/BatteryIndicator";
 import { ClipboardPeek, ClipboardTab } from "../features/clipboard/ClipboardTab";
@@ -8,8 +8,10 @@ import { LauncherTab } from "../features/launcher/LauncherTab";
 import { useMediaStore, useMediaSync } from "../features/media/store";
 import { useCoverColor } from "../features/media/useCoverColor";
 import { MediaCompact, MediaPeek, MediaPlayer } from "../features/media/views";
+import { Onboarding, SettingsTab } from "../features/settings/SettingsTab";
+import { useSettingsStore, useSettingsSync } from "../features/settings/store";
 import { ru } from "../i18n/ru";
-import type { MediaState } from "../ipc/commands";
+import type { MediaState, UpdateInfo } from "../ipc/commands";
 import { TABS, type IslandState, type Tab } from "./islandMachine";
 import { useIslandStore } from "./store";
 import { useIslandEvents } from "./useIslandEvents";
@@ -27,14 +29,22 @@ const SHAPES = {
 const SPRING: Transition = { type: "spring", stiffness: 420, damping: 34, mass: 0.9 };
 const FADE: Transition = { duration: 0.14 };
 
+/** Tells the user once that a newer version is out. */
+function announceUpdate(update: UpdateInfo) {
+  useIslandStore.getState().showToast(ru.settings.updateAvailable(update.version));
+}
+
 export function Island() {
   useIslandEvents();
   useMediaSync();
   useClipboardSync();
+  useSettingsSync(announceUpdate);
   const state = useIslandStore((s) => s.state);
   const dispatch = useIslandStore((s) => s.dispatch);
   const media = useMediaStore((s) => s.media);
   const toast = useIslandStore((s) => s.toast);
+  const opacity = useSettingsStore((s) => s.settings?.opacity ?? 1);
+  const onboarding = useSettingsStore((s) => s.settings !== null && !s.settings.onboarded);
   const glow = useCoverColor(media?.cover ?? null);
   const ref = useRef<HTMLDivElement>(null);
   useIslandRect(ref);
@@ -61,13 +71,16 @@ export function Island() {
   let content: ReactNode;
   if (state.mode === "expanded") {
     content = (
-      <ExpandedView
-        tab={state.tab}
-        media={media}
-        onSelect={(tab) => {
-          dispatch({ type: "selectTab", tab });
-        }}
-      />
+      <>
+        <ExpandedView
+          tab={state.tab}
+          media={media}
+          onSelect={(tab) => {
+            dispatch({ type: "selectTab", tab });
+          }}
+        />
+        {onboarding && <Onboarding />}
+      </>
     );
   } else if (mode === "peek" && peekKind === "toast" && toast) {
     content = (
@@ -92,7 +105,12 @@ export function Island() {
         ref={ref}
         data-mode={mode}
         className="relative overflow-hidden bg-[var(--island-bg)] text-[var(--island-fg)] transition-shadow duration-700"
-        style={{ boxShadow: shadow }}
+        style={
+          {
+            boxShadow: shadow,
+            "--island-bg": `rgb(0 0 0 / ${String(opacity)})`,
+          } as MotionStyle
+        }
         initial={false}
         animate={{
           width: shape.width,
@@ -211,7 +229,7 @@ function ExpandedView({
             </div>
           </>
         ) : (
-          <span className="text-sm text-[var(--island-muted)]">{ru.comingSoon}</span>
+          <SettingsTab />
         )}
       </div>
     </div>

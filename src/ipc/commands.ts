@@ -148,6 +148,62 @@ export function hotkeysStatus(): Promise<HotkeyStatus> {
   return invoke("hotkeys_status");
 }
 
+/** Releases our global hotkeys while the user records a new one. */
+export function hotkeysPause(paused: boolean): Promise<void> {
+  return invoke("hotkeys_pause", { paused });
+}
+
+/** Mirrors `settings::Settings`. */
+export interface Settings {
+  monitor: string | null;
+  autostart: boolean;
+  hideInFullscreen: boolean;
+  hour12: boolean;
+  clipboardHotkey: string;
+  launcherHotkey: string;
+  historyLimit: number;
+  copyPeek: boolean;
+  /** 0.5–1 */
+  opacity: number;
+  onboarded: boolean;
+}
+
+export function settingsGet(): Promise<Settings> {
+  return invoke("settings_get");
+}
+
+/** Applies and saves some settings; rejects (saving nothing) if applying fails. */
+export function settingsSet(patch: Partial<Settings>): Promise<Settings> {
+  return invoke("settings_set", { patch });
+}
+
+/** Mirrors `window::MonitorInfo`. */
+export interface MonitorInfo {
+  name: string;
+  width: number;
+  height: number;
+  primary: boolean;
+}
+
+export function monitorsList(): Promise<MonitorInfo[]> {
+  return invoke("monitors_list");
+}
+
+/** Mirrors `updater::UpdateInfo`. */
+export interface UpdateInfo {
+  version: string;
+  notes: string | null;
+}
+
+export function updateCheck(): Promise<UpdateInfo | null> {
+  return invoke("update_check");
+}
+
+/** Downloads, verifies and installs the update, then restarts the app. */
+export function updateInstall(): Promise<void> {
+  return invoke("update_install");
+}
+
 type ErrorSink = (message: string) => void;
 let errorSink: ErrorSink | undefined;
 

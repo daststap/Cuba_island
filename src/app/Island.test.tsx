@@ -4,7 +4,8 @@ import { emit } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMediaStore } from "../features/media/store";
 import { ru } from "../i18n/ru";
-import type { ClipItem, HotkeyStatus, LaunchResult, MediaState } from "../ipc/commands";
+import { useSettingsStore } from "../features/settings/store";
+import type { ClipItem, HotkeyStatus, LaunchResult, MediaState, Settings } from "../ipc/commands";
 import { Island } from "./Island";
 import { initialIslandState } from "./islandMachine";
 import { useIslandStore } from "./store";
@@ -55,6 +56,20 @@ const RESULTS: LaunchResult[] = [
   { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
 ];
 
+const DEFAULT_SETTINGS: Settings = {
+  monitor: null,
+  autostart: false,
+  hideInFullscreen: true,
+  hour12: false,
+  clipboardHotkey: "Ctrl+Alt+V",
+  launcherHotkey: "Alt+Space",
+  historyLimit: 500,
+  copyPeek: true,
+  opacity: 1,
+  onboarded: true,
+};
+
+let settings = DEFAULT_SETTINGS;
 let hotkeys = DEFAULT_HOTKEYS;
 let launcherResults = RESULTS;
 let failRun = false;
@@ -67,6 +82,8 @@ describe("Island", () => {
     useIslandStore.setState({ state: initialIslandState, inputMode: false, toast: null });
     useMediaStore.setState({ media: null });
     hotkeys = DEFAULT_HOTKEYS;
+    settings = DEFAULT_SETTINGS;
+    useSettingsStore.setState({ settings: null, update: null });
     launcherResults = RESULTS;
     failRun = false;
     mediaOnStart = null;
@@ -80,6 +97,13 @@ describe("Island", () => {
         if (cmd === "media_command") commands.push(args);
         if (cmd === "clipboard_list") return CLIPS;
         if (cmd === "hotkeys_status") return hotkeys;
+        if (cmd === "settings_get") return settings;
+        if (cmd === "settings_set") {
+          settings = { ...settings, ...(args as { patch: Partial<Settings> }).patch };
+          return settings;
+        }
+        if (cmd === "monitors_list") return [];
+        if (cmd === "update_check") return null;
         if (cmd === "launcher_search") return launcherResults;
         if (cmd === "launcher_run" && failRun) {
           // Tauri rejects with the serialized AppError object, not an Error.
@@ -315,6 +339,85 @@ describe("Island", () => {
       expect(await screen.findByRole("alert")).toHaveTextContent(
         ru.hotkeys.launcherFallback("Ctrl+Alt+Space"),
       );
+    });
+  });
+
+  describe("settings", () => {
+    const openSettings = async () => {
+      render(<Island />);
+      await act(async () => {
+        await emit("tray://settings");
+      });
+      return screen.findByRole("switch", { name: ru.settings.autostart });
+    };
+
+    it("opens from the tray with focus and saves toggles", async () => {
+      const autostart = await openSettings();
+      expect(useIslandStore.getState().state).toEqual({ mode: "expanded", tab: "settings" });
+      expect(calls).toContainEqual({ cmd: "set_input_mode", args: { enabled: true } });
+      fireEvent.click(autostart);
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "settings_set", args: { patch: { autostart: true } } });
+      });
+      expect(await screen.findByRole("switch", { name: ru.settings.autostart })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+    });
+
+    it("records a hotkey while our hotkeys are paused", async () => {
+      await openSettings();
+      const field = screen.getByRole("button", {
+        name: `${ru.settings.launcherHotkey}: Alt+Space`,
+      });
+      fireEvent.click(field);
+      expect(field).toHaveTextContent(ru.settings.recording);
+      fireEvent.keyDown(field, { key: "Control", code: "ControlLeft", ctrlKey: true });
+      fireEvent.keyDown(field, { key: "k", code: "KeyK", ctrlKey: true, shiftKey: true });
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "settings_set",
+          args: { patch: { launcherHotkey: "Ctrl+Shift+K" } },
+        });
+      });
+      expect(calls).toContainEqual({ cmd: "hotkeys_pause", args: { paused: true } });
+      expect(calls).toContainEqual({ cmd: "hotkeys_pause", args: { paused: false } });
+    });
+
+    it("shows 12h time when chosen", async () => {
+      settings = { ...DEFAULT_SETTINGS, hour12: true };
+      useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
+      render(<Island />);
+      await vi.waitFor(() => {
+        expect(screen.getByText(/\d{1,2}:\d{2} (AM|PM)/)).toBeInTheDocument();
+      });
+    });
+
+    it("asks about autostart on first run and remembers the answer", async () => {
+      settings = { ...DEFAULT_SETTINGS, onboarded: false };
+      render(<Island />);
+      const yes = await screen.findByRole("button", { name: ru.onboarding.yes });
+      expect(screen.getByRole("dialog", { name: ru.onboarding.question })).toBeInTheDocument();
+      fireEvent.click(yes);
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "settings_set",
+          args: { patch: { autostart: true, onboarded: true } },
+        });
+        expect(useIslandStore.getState().state.mode).toBe("compact");
+      });
+    });
+
+    it("skips the copy peek when turned off", async () => {
+      settings = { ...DEFAULT_SETTINGS, copyPeek: false };
+      render(<Island />);
+      await vi.waitFor(() => {
+        expect(useSettingsStore.getState().settings?.copyPeek).toBe(false);
+      });
+      await act(async () => {
+        await emit("clipboard://added", CLIPS[0]);
+      });
+      expect(useIslandStore.getState().state.mode).toBe("compact");
     });
   });
 });

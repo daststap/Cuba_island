@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { useIslandStore } from "../../app/store";
 import type { ClipItem } from "../../ipc/commands";
 import { onClipAdded } from "../../ipc/events";
+import { useSettingsStore } from "../settings/store";
 
 interface ClipboardStore {
   /** The most recent copy, shown in the "Скопировано" peek. */
@@ -26,7 +27,9 @@ export function useClipboardSync(): void {
     () =>
       onClipAdded((item) => {
         useClipboardStore.setState((s) => ({ lastAdded: item, revision: s.revision + 1 }));
-        useIslandStore.getState().peek("clipboard");
+        if (useSettingsStore.getState().settings?.copyPeek !== false) {
+          useIslandStore.getState().peek("clipboard");
+        }
       }),
     [],
   );

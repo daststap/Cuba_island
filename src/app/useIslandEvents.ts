@@ -6,8 +6,10 @@ import {
   onEdgePush,
   onHover,
   onLauncherHotkey,
+  onTraySettings,
   onVisibility,
 } from "../ipc/events";
+import { useSettingsStore } from "../features/settings/store";
 import { createHoverIntent } from "./hoverIntent";
 import type { Tab } from "./islandMachine";
 import { useIslandStore } from "./store";
@@ -20,6 +22,14 @@ export function hotkeyWarning(status: HotkeyStatus): string | null {
   return null;
 }
 
+const ONBOARDING_DELAY_MS = 800;
+
+/** The first-run autostart question has not been answered yet. */
+export function needsOnboarding(): boolean {
+  const settings = useSettingsStore.getState().settings;
+  return settings !== null && !settings.onboarded;
+}
+
 /** Wires Rust island events, hotkeys, focus and the Esc key to the island state. */
 export function useIslandEvents(): void {
   useEffect(() => {
@@ -28,7 +38,8 @@ export function useIslandEvents(): void {
     const intent = createHoverIntent(
       () => store.getState().state,
       dispatch,
-      () => store.getState().inputMode,
+      // Typing, or the first-run question is waiting for an answer.
+      () => store.getState().inputMode || needsOnboarding(),
     );
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -63,7 +74,29 @@ export function useIslandEvents(): void {
       onLauncherHotkey(() => {
         openByHotkey("launcher");
       }),
+      onTraySettings(() => {
+        intent.dispose();
+        // Opened from the tray, the cursor is far away: keep it open until Esc/close.
+        store.getState().enterInput();
+        dispatch({ type: "expand", tab: "settings" });
+      }),
     ];
+
+    // First run: open the panel with the autostart question once settings are known.
+    let onboardingTimer: ReturnType<typeof setTimeout> | undefined;
+    let settingsSeen = false;
+    const onSettings = () => {
+      const { settings } = useSettingsStore.getState();
+      if (!settings || settingsSeen) return;
+      settingsSeen = true;
+      if (!settings.onboarded) {
+        onboardingTimer = setTimeout(() => {
+          dispatch({ type: "expand", tab: "home" });
+        }, ONBOARDING_DELAY_MS);
+      }
+    };
+    const stopWaitingForSettings = useSettingsStore.subscribe(onSettings);
+    onSettings();
 
     /** Opens a tab with keyboard focus; the same hotkey again closes it. */
     function openByHotkey(tab: Tab) {
@@ -89,6 +122,8 @@ export function useIslandEvents(): void {
       });
 
     return () => {
+      stopWaitingForSettings();
+      clearTimeout(onboardingTimer);
       setErrorSink(undefined);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("blur", onBlur);
