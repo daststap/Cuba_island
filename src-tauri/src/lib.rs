@@ -1,5 +1,6 @@
 //! Application assembly: plugins, commands and startup.
 
+mod claude;
 mod clipboard;
 pub mod error;
 mod hotkeys;
@@ -73,6 +74,9 @@ pub fn run() {
             settings::monitors_list,
             updater::update_check,
             updater::update_install,
+            claude::claude_status,
+            claude::claude_hooks_status,
+            claude::claude_hooks_set,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
@@ -93,6 +97,7 @@ pub fn run() {
                 &settings.clipboard_hotkey,
                 &settings.launcher_hotkey,
             );
+            claude::start(handle);
             tray::create(handle)?;
             Ok(())
         })

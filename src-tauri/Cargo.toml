@@ -24,7 +24,7 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-log = "2"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 thiserror = "2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 clipboard-master = "4.1.0"
