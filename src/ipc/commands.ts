@@ -242,10 +242,6 @@ export function shelfList(): Promise<ShelfItem[]> {
   return invoke("shelf_list");
 }
 
-export function shelfAdd(paths: string[]): Promise<void> {
-  return invoke("shelf_add", { paths });
-}
-
 export function shelfRemove(ids: number[]): Promise<void> {
   return invoke("shelf_remove", { ids });
 }

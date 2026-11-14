@@ -81,7 +81,6 @@ pub fn run() {
             claude::claude_hooks_status,
             claude::claude_hooks_set,
             shelf::shelf_list,
-            shelf::shelf_add,
             shelf::shelf_remove,
             shelf::shelf_clear,
             shelf::shelf_open,

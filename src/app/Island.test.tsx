@@ -6,7 +6,7 @@ import { useMediaStore } from "../features/media/store";
 import { ru } from "../i18n/ru";
 import { useSettingsStore } from "../features/settings/store";
 import { useClaudeStore } from "../features/claude/store";
-import { handleFileDrop, useShelfStore } from "../features/shelf/store";
+import { handleFileDrag, useShelfStore } from "../features/shelf/store";
 import type {
   ShelfItem,
   ClaudeSession,
@@ -571,20 +571,42 @@ describe("Island", () => {
       expect(await screen.findByRole("img", { name: ru.shelf.count(2) })).toBeInTheDocument();
     });
 
-    it("opens the shelf when files are dragged over and stores dropped ones", async () => {
+    it("opens the shelf when files are dragged over, even from the home tab", async () => {
+      useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
       render(<Island />);
-      act(() => {
-        handleFileDrop({ type: "enter", paths: ["C:\\a.png"] });
+      await act(async () => {
+        await emit("shelf://drag", { type: "enter" });
       });
       expect(useIslandStore.getState().state).toEqual({ mode: "expanded", tab: "shelf" });
       expect(await screen.findByText(ru.shelf.dropHere)).toBeInTheDocument();
+    });
+
+    it("does not collapse while a file is dragged over the island", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      render(<Island />);
+      await act(async () => {
+        await emit("shelf://drag", { type: "enter" });
+        await emit("island://hover", { inside: false });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(useIslandStore.getState().state.mode).toBe("expanded");
+    });
+
+    it("drops hand over to Rust, which stores the files itself", async () => {
+      render(<Island />);
       act(() => {
-        handleFileDrop({ type: "drop", paths: ["C:\\a.png", "C:\\b"] });
+        handleFileDrag({ type: "enter" });
       });
-      await vi.waitFor(() => {
-        expect(calls).toContainEqual({ cmd: "shelf_add", args: { paths: ["C:\\a.png", "C:\\b"] } });
+      shelfItems = SHELF;
+      await act(async () => {
+        await emit("shelf://drag", { type: "drop" });
+        await emit("shelf://changed");
       });
+      expect(await screen.findByText("отчёт.pdf")).toBeInTheDocument();
       expect(screen.queryByText(ru.shelf.dropHere)).not.toBeInTheDocument();
+      expect(calls.some((c) => c.cmd === "shelf_add")).toBe(false);
     });
   });
 });

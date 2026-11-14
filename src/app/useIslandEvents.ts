@@ -10,6 +10,7 @@ import {
   onVisibility,
 } from "../ipc/events";
 import { useSettingsStore } from "../features/settings/store";
+import { useShelfStore } from "../features/shelf/store";
 import { createHoverIntent } from "./hoverIntent";
 import type { Tab } from "./islandMachine";
 import { useIslandStore } from "./store";
@@ -38,8 +39,8 @@ export function useIslandEvents(): void {
     const intent = createHoverIntent(
       () => store.getState().state,
       dispatch,
-      // Typing, or the first-run question is waiting for an answer.
-      () => store.getState().inputMode || needsOnboarding(),
+      // Typing, the first-run question is waiting, or a file is being dragged in.
+      () => store.getState().inputMode || needsOnboarding() || useShelfStore.getState().dragging,
     );
 
     const onKeyDown = (e: KeyboardEvent) => {

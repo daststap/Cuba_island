@@ -114,11 +114,67 @@ fn changed(app: &AppHandle) {
 }
 
 pub fn start(app: &AppHandle, db: Db) -> AppResult<()> {
-    app.manage(Arc::new(ShelfShared {
+    let shared: Shared = Arc::new(ShelfShared {
         db,
         image_dir: app.path().app_cache_dir()?.join("shelf"),
-    }));
+    });
+    app.manage(shared.clone());
+
+    // The island window is transparent and has no child webview HWND, so Windows
+    // delivers file drops to the window itself. Tauri reports them as a *window*
+    // event (and in some versions a webview event); listen to both here, in Rust,
+    // instead of relying on which one the frontend API subscribes to.
+    let window = app
+        .get_webview_window(crate::window::WINDOW_LABEL)
+        .ok_or_else(|| AppError::Internal("нет окна острова".into()))?;
+    let (app_w, shared_w) = (app.clone(), shared.clone());
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::DragDrop(drag) = event {
+            on_drag(&app_w, &shared_w, drag);
+        }
+    });
+    let app_v = app.clone();
+    window.on_webview_event(move |event| {
+        if let tauri::WebviewEvent::DragDrop(drag) = event {
+            on_drag(&app_v, &shared, drag);
+        }
+    });
     Ok(())
+}
+
+/// Payload of `shelf://drag`. Mirrored in `src/ipc/events.ts`.
+#[derive(Clone, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum DragPayload {
+    Enter,
+    Leave,
+    Drop,
+}
+
+fn on_drag(app: &AppHandle, shared: &ShelfShared, drag: &tauri::DragDropEvent) {
+    let payload = match drag {
+        tauri::DragDropEvent::Enter { .. } => DragPayload::Enter,
+        tauri::DragDropEvent::Drop { paths, .. } => {
+            let paths: Vec<String> = paths
+                .iter()
+                .filter(|p| p.is_absolute())
+                .map(|p| p.display().to_string())
+                .collect();
+            log::debug!("{} file(s) dropped on the island", paths.len());
+            if !paths.is_empty() {
+                match store::add(&shared.db.lock(), &paths, now_ms()) {
+                    Ok(()) => changed(app),
+                    Err(err) => log::error!("failed to put dropped files on the shelf: {err}"),
+                }
+            }
+            DragPayload::Drop
+        }
+        tauri::DragDropEvent::Leave => DragPayload::Leave,
+        _ => return,
+    };
+    if let Err(err) = app.emit("shelf://drag", payload) {
+        log::warn!("failed to emit shelf://drag: {err}");
+    }
 }
 
 /// Runs `work` on a blocking thread with COM initialised (shell images need it).
@@ -142,21 +198,6 @@ async fn blocking<T: Send + 'static>(
 pub async fn shelf_list(shared: State<'_, Shared>) -> AppResult<Vec<ShelfItem>> {
     let shared = shared.inner().clone();
     blocking(move || shared.items()).await
-}
-
-/// Adds dropped files and folders (absolute paths).
-#[tauri::command]
-pub fn shelf_add(paths: Vec<String>, app: AppHandle, shared: State<'_, Shared>) -> AppResult<()> {
-    let paths: Vec<String> = paths
-        .into_iter()
-        .filter(|p| Path::new(p).is_absolute())
-        .collect();
-    if paths.is_empty() {
-        return Err(AppError::InvalidArgument("нечего положить на полку".into()));
-    }
-    store::add(&shared.db.lock(), &paths, now_ms())?;
-    changed(&app);
-    Ok(())
 }
 
 #[tauri::command]
