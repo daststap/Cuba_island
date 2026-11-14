@@ -27,7 +27,8 @@
         "shadow": false,
         "focus": false,
         "focusable": false,
-        "visible": false
+        "visible": false,
+        "dragDropEnabled": false
       }
     ],
     "security": {

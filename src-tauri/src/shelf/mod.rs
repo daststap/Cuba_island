@@ -120,25 +120,15 @@ pub fn start(app: &AppHandle, db: Db) -> AppResult<()> {
     });
     app.manage(shared.clone());
 
-    // The island window is transparent and has no child webview HWND, so Windows
-    // delivers file drops to the window itself. Tauri reports them as a *window*
-    // event (and in some versions a webview event); listen to both here, in Rust,
-    // instead of relying on which one the frontend API subscribes to.
-    let window = app
-        .get_webview_window(crate::window::WINDOW_LABEL)
-        .ok_or_else(|| AppError::Internal("нет окна острова".into()))?;
-    let (app_w, shared_w) = (app.clone(), shared.clone());
-    window.on_window_event(move |event| {
-        if let tauri::WindowEvent::DragDrop(drag) = event {
-            on_drag(&app_w, &shared_w, drag);
-        }
-    });
-    let app_v = app.clone();
-    window.on_webview_event(move |event| {
-        if let tauri::WebviewEvent::DragDrop(drag) = event {
-            on_drag(&app_v, &shared, drag);
-        }
-    });
+    // Files dragged onto the island arrive through our own OLE drop target
+    // (see window/drop.rs for why Tauri's could not be used).
+    #[cfg(windows)]
+    {
+        let app_d = app.clone();
+        crate::window::install_drop_target(app, move |event| {
+            on_drop_event(&app_d, &shared, event);
+        })?;
+    }
     Ok(())
 }
 
@@ -151,16 +141,27 @@ enum DragPayload {
     Drop,
 }
 
-fn on_drag(app: &AppHandle, shared: &ShelfShared, drag: &tauri::DragDropEvent) {
-    let payload = match drag {
-        tauri::DragDropEvent::Enter { .. } => DragPayload::Enter,
-        tauri::DragDropEvent::Drop { paths, .. } => {
-            let paths: Vec<String> = paths
-                .iter()
-                .filter(|p| p.is_absolute())
-                .map(|p| p.display().to_string())
-                .collect();
-            log::debug!("{} file(s) dropped on the island", paths.len());
+/// Absolute paths as strings for the store.
+fn usable_paths(paths: &[PathBuf]) -> Vec<String> {
+    paths
+        .iter()
+        .filter(|p| p.is_absolute())
+        .map(|p| p.display().to_string())
+        .collect()
+}
+
+#[cfg(windows)]
+fn on_drop_event(app: &AppHandle, shared: &ShelfShared, event: crate::window::DropEvent) {
+    use crate::window::DropEvent;
+    let payload = match event {
+        DropEvent::Enter => {
+            log::info!("files dragged over the island");
+            DragPayload::Enter
+        }
+        DropEvent::Leave => DragPayload::Leave,
+        DropEvent::Drop(paths) => {
+            let paths = usable_paths(&paths);
+            log::info!("{} item(s) dropped on the shelf", paths.len());
             if !paths.is_empty() {
                 match store::add(&shared.db.lock(), &paths, now_ms()) {
                     Ok(()) => changed(app),
@@ -169,8 +170,6 @@ fn on_drag(app: &AppHandle, shared: &ShelfShared, drag: &tauri::DragDropEvent) {
             }
             DragPayload::Drop
         }
-        tauri::DragDropEvent::Leave => DragPayload::Leave,
-        _ => return,
     };
     if let Err(err) = app.emit("shelf://drag", payload) {
         log::warn!("failed to emit shelf://drag: {err}");
