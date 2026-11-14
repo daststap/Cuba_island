@@ -181,13 +181,13 @@ hotkey ─► expanded[clipboard | launcher] (+ input mode)
 ## 5. Этапы
 
 ### Этап 0 — Каркас проекта
-- [ ] Создать проект Tauri 2 + React + TS + Vite (`npm create tauri-app@latest`), настроить strict TS.
-- [ ] Подключить Tailwind v4, eslint, prettier, vitest; добавить скрипты `lint`, `typecheck`, `test`.
-- [ ] Настроить `clippy` и `rustfmt` и общий `AppError` в `error.rs`.
-- [ ] Подключить плагин `single-instance` и `log` (логи в файл в `app_log_dir`).
-- [ ] Создать `CLAUDE.md` с короткими конвенциями (стек, структура, команды проверки, правила из раздела 0).
-- [ ] GitHub Actions: `ci.yml` на push/PR (lint, typecheck, test, `cargo clippy`, `cargo test`, сборка) на `windows-latest`.
-- [ ] README с описанием и разделом «Как запустить».
+- [x] Создать проект Tauri 2 + React + TS + Vite (`npm create tauri-app@latest`), настроить strict TS.
+- [x] Подключить Tailwind v4, eslint, prettier, vitest; добавить скрипты `lint`, `typecheck`, `test`.
+- [x] Настроить `clippy` и `rustfmt` и общий `AppError` в `error.rs`.
+- [x] Подключить плагин `single-instance` и `log` (логи в файл в `app_log_dir`).
+- [x] Создать `CLAUDE.md` с короткими конвенциями (стек, структура, команды проверки, правила из раздела 0).
+- [x] GitHub Actions: `ci.yml` на push/PR (lint, typecheck, test, `cargo clippy`, `cargo test`, сборка) на `windows-latest`.
+- [x] README с описанием и разделом «Как запустить».
 
 **Ручная проверка:** `npm run tauri dev` открывает окно; CI зелёный.
 
