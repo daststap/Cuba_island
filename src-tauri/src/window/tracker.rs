@@ -88,6 +88,10 @@ pub fn spawn_fullscreen_watcher(app: AppHandle, hwnd: Hwnd, shared: Shared) {
                     "island://visibility",
                     VisibilityPayload { visible: !hidden },
                 );
+            } else if hidden {
+                // Stay hidden even if something showed the window meanwhile
+                // (a no-op when it is already hidden).
+                win32::set_visible(hwnd, false);
             }
             std::thread::sleep(FULLSCREEN_POLL);
         }

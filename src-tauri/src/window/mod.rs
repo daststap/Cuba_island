@@ -69,17 +69,24 @@ pub fn setup(app: &AppHandle, monitor: Option<String>, hide_in_fullscreen: bool)
     reposition(&window, &shared)?;
 
     #[cfg(windows)]
-    {
+    let hwnd = {
         let hwnd = win32::Hwnd::of(&window)?;
         let (tx, rx) = std::sync::mpsc::channel();
         win32::install(hwnd, tx)?;
         tracker::spawn_reposition_worker(window.clone(), shared.clone(), rx);
-        tracker::spawn_cursor_tracker(app.clone(), hwnd, shared.clone());
-        tracker::spawn_fullscreen_watcher(app.clone(), hwnd, shared.clone());
-    }
+        hwnd
+    };
 
     // Created hidden with `focus: false`, so tao shows it with SW_SHOWNOACTIVATE.
     window.show()?;
+
+    // Start watching only after the first show: otherwise a full-screen app found at
+    // startup hides the window, and this show() would bring it back over the game.
+    #[cfg(windows)]
+    {
+        tracker::spawn_cursor_tracker(app.clone(), hwnd, shared.clone());
+        tracker::spawn_fullscreen_watcher(app.clone(), hwnd, shared.clone());
+    }
     Ok(())
 }
 
