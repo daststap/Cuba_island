@@ -1,6 +1,9 @@
 //! Application assembly: plugins, commands and startup.
 
 pub mod error;
+mod system;
+mod thread;
+mod window;
 
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
 
@@ -33,8 +36,14 @@ pub fn run() {
         }))
         .plugin(log_plugin())
         .plugin(tauri_plugin_opener::init())
-        .setup(|_app| {
+        .invoke_handler(tauri::generate_handler![
+            window::set_island_rect,
+            system::get_battery,
+        ])
+        .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
+            window::setup(app.handle())?;
+            system::spawn_battery_watcher(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!());

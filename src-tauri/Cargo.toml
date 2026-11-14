@@ -27,6 +27,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_System_Power",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
 [lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 
@@ -40,5 +48,6 @@ undocumented_unsafe_blocks = "deny"
 codegen-units = 1
 lto = true
 opt-level = "s"
-panic = "abort"
+# unwind (not abort) so a panicking background thread can be restarted (PLAN.md §6).
+panic = "unwind"
 strip = true
