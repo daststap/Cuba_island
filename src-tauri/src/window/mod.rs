@@ -134,6 +134,19 @@ pub fn enter_input_mode(app: &AppHandle) -> AppResult<()> {
 /// Makes the island unfocusable again and returns focus to the user's window —
 /// unless the user already switched elsewhere themselves.
 pub fn exit_input_mode(app: &AppHandle) -> AppResult<()> {
+    leave_input_mode(app, true)
+}
+
+/// Leaves input mode without returning focus, and lets any process take the
+/// foreground: used right before launching an app or opening the browser, so the
+/// new window comes to the front instead of the one the user was in.
+pub fn hand_over_focus(app: &AppHandle) -> AppResult<()> {
+    #[cfg(windows)]
+    input::allow_any_foreground();
+    leave_input_mode(app, false)
+}
+
+fn leave_input_mode(app: &AppHandle, restore: bool) -> AppResult<()> {
     let (window, shared) = island(app)?;
     if !shared.input_mode.swap(false, Ordering::SeqCst) {
         return Ok(());
@@ -142,7 +155,7 @@ pub fn exit_input_mode(app: &AppHandle) -> AppResult<()> {
     let island_has_focus = input::foreground() == Some(win32::Hwnd::of(&window)?);
     window.set_focusable(false)?;
     #[cfg(windows)]
-    if island_has_focus {
+    if restore && island_has_focus {
         let previous = *shared
             .previous_foreground
             .lock()

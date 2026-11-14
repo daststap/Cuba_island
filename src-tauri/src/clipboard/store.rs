@@ -99,11 +99,7 @@ fn from_row(row: &Row<'_>) -> rusqlite::Result<Clip> {
 
 /// Stable content hash for dedupe: 64-bit FNV-1a plus kind and length.
 pub fn content_hash(kind: ClipKind, bytes: &[u8]) -> String {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in bytes {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x0100_0000_01b3);
-    }
+    let hash = crate::util::fnv1a(bytes);
     format!("{}:{}:{hash:016x}", kind.as_str(), bytes.len())
 }
 

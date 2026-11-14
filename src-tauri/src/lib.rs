@@ -3,10 +3,12 @@
 mod clipboard;
 pub mod error;
 mod hotkeys;
+mod launcher;
 mod media;
 mod storage;
 mod system;
 mod thread;
+mod util;
 mod window;
 
 use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
@@ -53,13 +55,18 @@ pub fn run() {
             clipboard::clipboard_pin,
             clipboard::clipboard_delete,
             clipboard::clipboard_clear,
+            launcher::launcher_search,
+            launcher::launcher_run,
+            hotkeys::hotkeys_status,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
             window::setup(app.handle())?;
             system::spawn_battery_watcher(app.handle().clone());
             media::start(app.handle());
-            clipboard::start(app.handle())?;
+            let db = storage::init(app.handle())?;
+            clipboard::start(app.handle(), db.clone())?;
+            launcher::start(app.handle(), db)?;
             hotkeys::register(app.handle());
             Ok(())
         })

@@ -4,10 +4,33 @@
 //! Never edit a published migration — append a new one.
 
 use std::path::Path;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rusqlite::Connection;
+use tauri::{AppHandle, Manager};
 
 use crate::error::{AppError, AppResult};
+
+/// The app's single database connection, shared by every module.
+#[derive(Clone)]
+pub struct Db(Arc<Mutex<Connection>>);
+
+impl Db {
+    pub fn new(conn: Connection) -> Self {
+        Self(Arc::new(Mutex::new(conn)))
+    }
+
+    pub fn lock(&self) -> MutexGuard<'_, Connection> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// Opens `app_data_dir/escape.db` and registers it as managed state.
+pub fn init(app: &AppHandle) -> AppResult<Db> {
+    let db = Db::new(open(&app.path().app_data_dir()?.join("escape.db"))?);
+    app.manage(db.clone());
+    Ok(db)
+}
 
 const MIGRATIONS: &[&str] = &[
     // 1: clipboard history
@@ -22,6 +45,12 @@ const MIGRATIONS: &[&str] = &[
         used_at     INTEGER NOT NULL
     );
     CREATE INDEX clips_order ON clips (pinned DESC, used_at DESC);",
+    // 2: launcher usage, for "recently launched ranks higher"
+    "CREATE TABLE launches (
+        id          TEXT    PRIMARY KEY,
+        count       INTEGER NOT NULL DEFAULT 0,
+        last_at     INTEGER NOT NULL
+    );",
 ];
 
 impl From<rusqlite::Error> for AppError {

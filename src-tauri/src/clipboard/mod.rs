@@ -8,28 +8,27 @@ mod watcher;
 mod win32;
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, MutexGuard};
 
 use rusqlite::Connection;
 use tauri::{AppHandle, Manager, State};
 
 use crate::error::{AppError, AppResult};
-use crate::storage;
+use crate::storage::Db;
 use store::{Clip, ClipItem, ClipKind, NewClip};
 
 /// Default history size; pinned clips do not count (settings arrive in stage 5).
 const HISTORY_LIMIT: usize = 500;
 
 pub struct ClipboardShared {
-    db: Mutex<Connection>,
+    db: Db,
     /// `app_data_dir/clips`: PNGs and their previews.
     dir: PathBuf,
 }
 
 impl ClipboardShared {
-    fn db(&self) -> std::sync::MutexGuard<'_, Connection> {
-        self.db.lock().unwrap_or_else(PoisonError::into_inner)
+    fn db(&self) -> MutexGuard<'_, Connection> {
+        self.db.lock()
     }
 
     fn item(&self, clip: &Clip) -> ClipItem {
@@ -84,19 +83,13 @@ impl ClipboardShared {
 
 type Shared = Arc<ClipboardShared>;
 
-pub fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
-        .unwrap_or(0)
-}
+use crate::util::now_ms;
 
-/// Opens the history database and starts the clipboard listener.
-pub fn start(app: &AppHandle) -> AppResult<()> {
-    let data_dir = app.path().app_data_dir()?;
+/// Starts the clipboard listener on top of the shared database.
+pub fn start(app: &AppHandle, db: Db) -> AppResult<()> {
     let shared = Arc::new(ClipboardShared {
-        db: Mutex::new(storage::open(&data_dir.join("escape.db"))?),
-        dir: data_dir.join("clips"),
+        db,
+        dir: app.path().app_data_dir()?.join("clips"),
     });
     app.manage(shared.clone());
 

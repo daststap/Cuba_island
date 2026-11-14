@@ -8,7 +8,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VIRTUAL_KEY, VK_CONTROL, VK_V,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowThreadProcessId, IsWindow, SetForegroundWindow,
+    AllowSetForegroundWindow, GetForegroundWindow, GetWindowThreadProcessId, IsWindow,
+    SetForegroundWindow, ASFW_ANY,
 };
 
 use super::win32::Hwnd;
@@ -45,6 +46,15 @@ pub fn activate(hwnd: Hwnd) -> bool {
             let _ = AttachThreadInput(ours, theirs, false);
         }
         ok
+    }
+}
+
+/// Lets whatever process opens a window next bring it to the foreground.
+/// Only works while we hold the foreground (input mode), which is when it's called.
+pub fn allow_any_foreground() {
+    // SAFETY: plain call; failure only means Windows keeps its usual focus rules.
+    if let Err(err) = unsafe { AllowSetForegroundWindow(ASFW_ANY) } {
+        log::debug!("AllowSetForegroundWindow failed: {err}");
     }
 }
 
