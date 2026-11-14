@@ -57,6 +57,16 @@ const MIGRATIONS: &[&str] = &[
         path        TEXT    NOT NULL UNIQUE,
         added_at    INTEGER NOT NULL
     );",
+    // 4: notes with optional reminders
+    "CREATE TABLE notes (
+        id          INTEGER PRIMARY KEY,
+        text        TEXT    NOT NULL,
+        remind_at   INTEGER,
+        reminded    INTEGER NOT NULL DEFAULT 0,
+        done        INTEGER NOT NULL DEFAULT 0,
+        created_at  INTEGER NOT NULL
+    );
+    CREATE INDEX notes_due ON notes (reminded, remind_at);",
 ];
 
 impl From<rusqlite::Error> for AppError {
