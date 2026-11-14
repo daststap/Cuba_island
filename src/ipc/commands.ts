@@ -259,6 +259,54 @@ export function shelfDragOut(ids: number[]): Promise<boolean> {
   return invoke("shelf_drag_out", { ids });
 }
 
+/** Mirrors `notes::Note`. */
+export interface Note {
+  id: number;
+  text: string;
+  /** Unix ms, or null for no reminder. */
+  remindAt: number | null;
+  reminded: boolean;
+  done: boolean;
+  createdAt: number;
+}
+
+export function notesList(): Promise<Note[]> {
+  return invoke("notes_list");
+}
+
+export function notesAdd(text: string, remindAt: number | null): Promise<Note> {
+  return invoke("notes_add", { text, remindAt });
+}
+
+export function notesSetDone(id: number, done: boolean): Promise<void> {
+  return invoke("notes_set_done", { id, done });
+}
+
+export function notesDelete(id: number): Promise<void> {
+  return invoke("notes_delete", { id });
+}
+
+/** Mirrors `notes::TimerState`. */
+export interface TimerState {
+  /** 0 = no timer. */
+  durationMs: number;
+  /** Unix ms when it ends; null while paused or idle. */
+  endsAt: number | null;
+  pausedRemainingMs: number | null;
+}
+
+export function timerGet(): Promise<TimerState> {
+  return invoke("timer_get");
+}
+
+export function timerStart(durationMs: number): Promise<TimerState> {
+  return invoke("timer_start", { durationMs });
+}
+
+export function timerControl(action: "pause" | "resume" | "cancel"): Promise<TimerState> {
+  return invoke("timer_control", { action });
+}
+
 /** Mirrors `updater::UpdateInfo`. */
 export interface UpdateInfo {
   version: string;

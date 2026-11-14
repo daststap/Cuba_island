@@ -3,7 +3,15 @@
  * unsubscribe function suitable for a `useEffect` cleanup.
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { Battery, ClaudeSession, ClipItem, MediaState, Settings } from "./commands";
+import type {
+  Battery,
+  ClaudeSession,
+  ClipItem,
+  MediaState,
+  Note,
+  Settings,
+  TimerState,
+} from "./commands";
 
 export interface HoverPayload {
   inside: boolean;
@@ -28,6 +36,10 @@ interface EventMap {
   "claude://status": ClaudeSession[];
   "claude://attention": ClaudeSession | null;
   "shelf://changed": null;
+  "notes://changed": null;
+  "notes://reminder": Note;
+  "notes://timer": TimerState;
+  "notes://timer-done": null;
 }
 
 function subscribe<K extends keyof EventMap>(
@@ -84,3 +96,12 @@ export const onClaudeAttention = (handler: (session: ClaudeSession | null) => vo
   subscribe("claude://attention", handler);
 
 export const onShelfChanged = (handler: () => void) => subscribe("shelf://changed", handler);
+
+export const onNotesChanged = (handler: () => void) => subscribe("notes://changed", handler);
+
+export const onReminder = (handler: (note: Note) => void) => subscribe("notes://reminder", handler);
+
+export const onTimer = (handler: (state: TimerState) => void) =>
+  subscribe("notes://timer", handler);
+
+export const onTimerDone = (handler: () => void) => subscribe("notes://timer-done", handler);

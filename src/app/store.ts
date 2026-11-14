@@ -14,6 +14,8 @@ export const PEEK_DURATION_MS: Record<PeekKind, number> = {
   clipboard: 1500,
   toast: 4000,
   claude: 6000,
+  // Reminders and finished timers stay until the user reacts.
+  alert: Number.POSITIVE_INFINITY,
 };
 
 interface IslandStore {
@@ -58,9 +60,11 @@ export const useIslandStore = create<IslandStore>()((set, get) => ({
     dispatch({ type: "peek", kind });
     if (get().state.mode !== "peek") return;
     clearTimeout(peekTimer);
+    const duration = PEEK_DURATION_MS[kind];
+    if (!Number.isFinite(duration)) return;
     peekTimer = setTimeout(() => {
       dispatch({ type: "endPeek" });
-    }, PEEK_DURATION_MS[kind]);
+    }, duration);
   },
   enterInput: () => {
     if (get().inputMode) return;

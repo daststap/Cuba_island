@@ -13,6 +13,8 @@ import { MediaCompact, MediaPeek, MediaPlayer } from "../features/media/views";
 import { Onboarding, SettingsTab } from "../features/settings/SettingsTab";
 import { ShelfBadge, ShelfTab } from "../features/shelf/ShelfTab";
 import { useShelfSync } from "../features/shelf/store";
+import { AlertPeek, NotesTab, TimerBadge } from "../features/notes/NotesTab";
+import { useNotesStore, useNotesSync } from "../features/notes/store";
 import { useSettingsStore, useSettingsSync } from "../features/settings/store";
 import { ru } from "../i18n/ru";
 import type { MediaState, UpdateInfo } from "../ipc/commands";
@@ -45,12 +47,14 @@ export function Island() {
   useClipboardSync();
   useClaudeSync();
   useShelfSync();
+  useNotesSync();
   useSettingsSync(announceUpdate);
   const state = useIslandStore((s) => s.state);
   const dispatch = useIslandStore((s) => s.dispatch);
   const media = useMediaStore((s) => s.media);
   const toast = useIslandStore((s) => s.toast);
   const claudeAttention = useClaudeStore((s) => s.attention);
+  const alert = useNotesStore((s) => s.alert);
   const opacity = useSettingsStore((s) => s.settings?.opacity ?? 1);
   const onboarding = useSettingsStore((s) => s.settings !== null && !s.settings.onboarded);
   const glow = useCoverColor(media?.cover ?? null);
@@ -62,7 +66,8 @@ export function Island() {
   const stale =
     (peekKind === "media" && !media) ||
     (peekKind === "toast" && !toast) ||
-    (peekKind === "claude" && !claudeAttention);
+    (peekKind === "claude" && !claudeAttention) ||
+    (peekKind === "alert" && !alert);
   const mode = stale ? "compact" : state.mode;
   const shape =
     mode === "expanded"
@@ -72,7 +77,7 @@ export function Island() {
           ? SHAPES.clipboardPeek
           : peekKind === "toast"
             ? SHAPES.toastPeek
-            : peekKind === "claude"
+            : peekKind === "claude" || peekKind === "alert"
               ? SHAPES.claudePeek
               : SHAPES.peek
         : SHAPES.compact;
@@ -106,6 +111,8 @@ export function Island() {
     );
   } else if (mode === "peek" && peekKind === "claude") {
     content = <ClaudePeek />;
+  } else if (mode === "peek" && peekKind === "alert") {
+    content = <AlertPeek />;
   } else if (mode === "peek" && peekKind === "clipboard") {
     content = <ClipboardPeek />;
   } else if (mode === "peek" && media) {
@@ -179,6 +186,7 @@ function CompactView({ mode, media }: { mode: IslandState["mode"]; media: MediaS
       {/* Claude Code status sits in the free middle of the pill. */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2">
         <ClaudeBadge />
+        <TimerBadge />
         <ShelfBadge />
       </div>
     </div>
@@ -241,6 +249,8 @@ function ExpandedView({
               <ClaudeSessions />
             </div>
           </>
+        ) : tab === "notes" ? (
+          <NotesTab />
         ) : tab === "shelf" ? (
           <ShelfTab />
         ) : tab === "clipboard" ? (
