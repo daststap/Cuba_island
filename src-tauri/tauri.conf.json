@@ -34,19 +34,13 @@
       "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'",
       "assetProtocol": {
         "enable": true,
-        "scope": [
-          "$APPDATA/clips/**",
-          "$APPCACHE/icons/**",
-          "$APPCACHE/shelf/**"
-        ]
+        "scope": ["$APPDATA/clips/**", "$APPCACHE/icons/**", "$APPCACHE/shelf/**"]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "nsis"
-    ],
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -59,9 +53,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI0MjE2OEZGNkRCNkVDQzEKUldUQjdMWnQvMmdoSkRJYlJsa3VreGJMekJvbmxiQWwzUHZHRGdwQW1oblkxS3JWaDVTM1d4a3MK",
-      "endpoints": [
-        "https://github.com/OWNER/escape/releases/latest/download/latest.json"
-      ],
+      "endpoints": ["https://github.com/OWNER/escape/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
       }
