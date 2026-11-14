@@ -5,9 +5,12 @@ pub mod error;
 mod hotkeys;
 mod launcher;
 mod media;
+mod settings;
 mod storage;
 mod system;
 mod thread;
+mod tray;
+mod updater;
 mod util;
 mod window;
 
@@ -43,6 +46,12 @@ pub fn run() {
         .plugin(log_plugin())
         .plugin(tauri_plugin_opener::init())
         .plugin(hotkeys::plugin())
+        .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             window::set_island_rect,
             window::set_input_mode,
@@ -58,16 +67,32 @@ pub fn run() {
             launcher::launcher_search,
             launcher::launcher_run,
             hotkeys::hotkeys_status,
+            settings::settings_get,
+            settings::settings_set,
+            settings::monitors_list,
+            updater::update_check,
+            updater::update_install,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
-            window::setup(app.handle())?;
-            system::spawn_battery_watcher(app.handle().clone());
-            media::start(app.handle());
-            let db = storage::init(app.handle())?;
-            clipboard::start(app.handle(), db.clone())?;
-            launcher::start(app.handle(), db)?;
-            hotkeys::register(app.handle());
+            let handle = app.handle();
+            let settings = settings::load(handle);
+            window::setup(
+                handle,
+                settings.monitor.clone(),
+                settings.hide_in_fullscreen,
+            )?;
+            system::spawn_battery_watcher(handle.clone());
+            media::start(handle);
+            let db = storage::init(handle)?;
+            clipboard::start(handle, db.clone(), settings.history_limit as usize)?;
+            launcher::start(handle, db)?;
+            hotkeys::register(
+                handle,
+                &settings.clipboard_hotkey,
+                &settings.launcher_hotkey,
+            );
+            tray::create(handle)?;
             Ok(())
         })
         .run(tauri::generate_context!());

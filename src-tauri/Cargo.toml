@@ -1,6 +1,6 @@
 [package]
 name = "escape"
-version = "0.1.0"
+version = "1.0.0"
 description = "Dynamic Island for Windows"
 authors = ["vsevolod"]
 license = "MIT"
@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["image-png", "protocol-asset", "tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-log = "2"
@@ -33,6 +33,9 @@ tauri-plugin-global-shortcut = "2.3.2"
 image = { version = "0.25", default-features = false, features = ["png"] }
 nucleo-matcher = "0.3.1"
 evalexpr = "13.1.0"
+tauri-plugin-store = "2.4.5"
+tauri-plugin-autostart = "2.5.1"
+tauri-plugin-updater = "2.12.0"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
@@ -67,6 +70,6 @@ undocumented_unsafe_blocks = "deny"
 codegen-units = 1
 lto = true
 opt-level = "s"
-# unwind (not abort) so a panicking background thread can be restarted (PLAN.md §6).
+# unwind (not abort) so a panicking background thread can be restarted (PLAN.md В§6).
 panic = "unwind"
 strip = true

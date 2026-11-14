@@ -27,6 +27,9 @@ pub struct IslandShared {
     rect: Mutex<IslandRect>,
     placement: Mutex<Option<Placement>>,
     hidden: AtomicBool,
+    /// Settings: target monitor name (`None` = primary) and full-screen hiding.
+    monitor: Mutex<Option<String>>,
+    hide_in_fullscreen: AtomicBool,
     /// The island accepts keyboard focus (search field, hotkeys).
     input_mode: AtomicBool,
     /// Where focus goes back to when input mode ends; also the paste target.
@@ -52,11 +55,15 @@ impl IslandShared {
 type Shared = Arc<IslandShared>;
 
 /// Positions the window, installs click-through and starts the background watchers.
-pub fn setup(app: &AppHandle) -> AppResult<()> {
+pub fn setup(app: &AppHandle, monitor: Option<String>, hide_in_fullscreen: bool) -> AppResult<()> {
     let window = app
         .get_webview_window(WINDOW_LABEL)
         .ok_or_else(|| AppError::Internal(format!("window `{WINDOW_LABEL}` is missing")))?;
-    let shared: Shared = Arc::default();
+    let shared: Shared = Arc::new(IslandShared {
+        monitor: Mutex::new(monitor),
+        hide_in_fullscreen: AtomicBool::new(hide_in_fullscreen),
+        ..IslandShared::default()
+    });
     app.manage(shared.clone());
 
     reposition(&window, &shared)?;
@@ -190,12 +197,82 @@ pub fn is_hidden(app: &AppHandle) -> bool {
         .is_some_and(|s| s.hidden.load(Ordering::SeqCst))
 }
 
+/// A monitor the island can be placed on. Mirrored in `src/ipc/commands.ts`.
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitorInfo {
+    /// Windows device name, e.g. `\\.\DISPLAY1`; stored in settings.
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub primary: bool,
+}
+
+pub fn monitors(app: &AppHandle) -> AppResult<Vec<MonitorInfo>> {
+    let (window, _) = island(app)?;
+    let primary = window.primary_monitor()?.and_then(|m| m.name().cloned());
+    Ok(window
+        .available_monitors()?
+        .into_iter()
+        .filter_map(|m| {
+            let name = m.name()?.clone();
+            Some(MonitorInfo {
+                primary: primary.as_ref() == Some(&name),
+                width: m.size().width,
+                height: m.size().height,
+                name,
+            })
+        })
+        .collect())
+}
+
+/// Applies display settings: which monitor (`None` = primary) and whether to hide
+/// while a full-screen app is in front.
+pub fn apply_display(
+    app: &AppHandle,
+    monitor: Option<String>,
+    hide_in_fullscreen: bool,
+) -> AppResult<()> {
+    let (window, shared) = island(app)?;
+    shared
+        .hide_in_fullscreen
+        .store(hide_in_fullscreen, Ordering::SeqCst);
+    let changed = {
+        let mut current = shared
+            .monitor
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let changed = *current != monitor;
+        *current = monitor;
+        changed
+    };
+    if changed {
+        reposition(&window, &shared)?;
+    }
+    Ok(())
+}
+
 /// Places the window at the top centre of the target monitor (PLAN.md §4.3).
 fn reposition(window: &WebviewWindow, shared: &Shared) -> AppResult<()> {
-    // Monitor selection arrives with settings (stage 5); until then: the primary one.
-    let monitor = window
-        .primary_monitor()?
-        .ok_or_else(|| AppError::Internal("no primary monitor".into()))?;
+    let wanted = shared
+        .monitor
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    // The chosen monitor if it is connected, otherwise the primary one.
+    let chosen = wanted.and_then(|name| {
+        window
+            .available_monitors()
+            .ok()?
+            .into_iter()
+            .find(|m| m.name() == Some(&name))
+    });
+    let monitor = match chosen {
+        Some(monitor) => monitor,
+        None => window
+            .primary_monitor()?
+            .ok_or_else(|| AppError::Internal("no primary monitor".into()))?,
+    };
     let scale = monitor.scale_factor();
     let rect = PhysRect {
         x: monitor.position().x,

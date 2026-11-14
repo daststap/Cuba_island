@@ -8,6 +8,7 @@ mod watcher;
 mod win32;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, MutexGuard};
 
 use rusqlite::Connection;
@@ -17,18 +18,26 @@ use crate::error::{AppError, AppResult};
 use crate::storage::Db;
 use store::{Clip, ClipItem, ClipKind, NewClip};
 
-/// Default history size; pinned clips do not count (settings arrive in stage 5).
-const HISTORY_LIMIT: usize = 500;
-
 pub struct ClipboardShared {
     db: Db,
     /// `app_data_dir/clips`: PNGs and their previews.
     dir: PathBuf,
+    /// History size from settings; pinned clips do not count.
+    limit: AtomicUsize,
 }
 
 impl ClipboardShared {
     fn db(&self) -> MutexGuard<'_, Connection> {
         self.db.lock()
+    }
+
+    /// Deletes the oldest unpinned clips beyond the limit, with their image files.
+    fn trim(&self) -> AppResult<()> {
+        let removed = store::enforce_limit(&self.db(), self.limit.load(Ordering::SeqCst))?;
+        for name in removed {
+            images::remove(&self.dir, &name);
+        }
+        Ok(())
     }
 
     fn item(&self, clip: &Clip) -> ClipItem {
@@ -44,13 +53,8 @@ impl ClipboardShared {
     /// Stores a new clip (or bumps a duplicate) and trims the history.
     #[cfg_attr(not(windows), allow(dead_code))]
     fn insert(&self, clip: NewClip<'_>, hash: &str) -> AppResult<ClipItem> {
-        let db = self.db();
-        let (clip, _is_new) = store::upsert(&db, clip, hash, now_ms())?;
-        let removed = store::enforce_limit(&db, HISTORY_LIMIT)?;
-        drop(db);
-        for name in removed {
-            images::remove(&self.dir, &name);
-        }
+        let (clip, _is_new) = store::upsert(&self.db(), clip, hash, now_ms())?;
+        self.trim()?;
         Ok(self.item(&clip))
     }
 
@@ -85,11 +89,19 @@ type Shared = Arc<ClipboardShared>;
 
 use crate::util::now_ms;
 
+/// Changes the history size and trims the history right away.
+pub fn set_history_limit(app: &AppHandle, limit: usize) -> AppResult<()> {
+    let shared = app.state::<Shared>();
+    shared.limit.store(limit, Ordering::SeqCst);
+    shared.trim()
+}
+
 /// Starts the clipboard listener on top of the shared database.
-pub fn start(app: &AppHandle, db: Db) -> AppResult<()> {
+pub fn start(app: &AppHandle, db: Db, limit: usize) -> AppResult<()> {
     let shared = Arc::new(ClipboardShared {
         db,
         dir: app.path().app_data_dir()?.join("clips"),
+        limit: AtomicUsize::new(limit),
     });
     app.manage(shared.clone());
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Escape",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "com.escape.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -47,6 +47,16 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI0MjE2OEZGNkRCNkVDQzEKUldUQjdMWnQvMmdoSkRJYlJsa3VreGJMekJvbmxiQWwzUHZHRGdwQW1oblkxS3JWaDVTM1d4a3MK",
+      "endpoints": ["https://github.com/OWNER/escape/releases/latest/download/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
