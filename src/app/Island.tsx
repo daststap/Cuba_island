@@ -1,6 +1,8 @@
 import { AnimatePresence, motion, type MotionStyle, type Transition } from "motion/react";
 import { useRef, type ReactNode } from "react";
 import { BatteryIndicator } from "../features/battery/BatteryIndicator";
+import { useClaudeStore, useClaudeSync } from "../features/claude/store";
+import { ClaudeBadge, ClaudePeek, ClaudeSessions } from "../features/claude/views";
 import { ClipboardPeek, ClipboardTab } from "../features/clipboard/ClipboardTab";
 import { useClipboardSync } from "../features/clipboard/store";
 import { Clock, LongDate } from "../features/clock/Clock";
@@ -23,6 +25,7 @@ const SHAPES = {
   peek: { width: 360, height: 68, radius: 28 },
   clipboardPeek: { width: 320, height: 44, radius: 22 },
   toastPeek: { width: 440, height: 44, radius: 22 },
+  claudePeek: { width: 420, height: 56, radius: 28 },
   expanded: { width: 640, height: 360, radius: 32 },
 } as const;
 
@@ -38,11 +41,13 @@ export function Island() {
   useIslandEvents();
   useMediaSync();
   useClipboardSync();
+  useClaudeSync();
   useSettingsSync(announceUpdate);
   const state = useIslandStore((s) => s.state);
   const dispatch = useIslandStore((s) => s.dispatch);
   const media = useMediaStore((s) => s.media);
   const toast = useIslandStore((s) => s.toast);
+  const claudeAttention = useClaudeStore((s) => s.attention);
   const opacity = useSettingsStore((s) => s.settings?.opacity ?? 1);
   const onboarding = useSettingsStore((s) => s.settings !== null && !s.settings.onboarded);
   const glow = useCoverColor(media?.cover ?? null);
@@ -51,7 +56,10 @@ export function Island() {
 
   const peekKind = state.mode === "peek" ? state.kind : null;
   // A peek whose content is gone (player closed, toast expired) shows as compact.
-  const stale = (peekKind === "media" && !media) || (peekKind === "toast" && !toast);
+  const stale =
+    (peekKind === "media" && !media) ||
+    (peekKind === "toast" && !toast) ||
+    (peekKind === "claude" && !claudeAttention);
   const mode = stale ? "compact" : state.mode;
   const shape =
     mode === "expanded"
@@ -61,7 +69,9 @@ export function Island() {
           ? SHAPES.clipboardPeek
           : peekKind === "toast"
             ? SHAPES.toastPeek
-            : SHAPES.peek
+            : peekKind === "claude"
+              ? SHAPES.claudePeek
+              : SHAPES.peek
         : SHAPES.compact;
   const glowAlpha = media?.isPlaying ? 0.55 : 0.3;
   const shadow = glow
@@ -91,6 +101,8 @@ export function Island() {
         {toast}
       </div>
     );
+  } else if (mode === "peek" && peekKind === "claude") {
+    content = <ClaudePeek />;
   } else if (mode === "peek" && peekKind === "clipboard") {
     content = <ClipboardPeek />;
   } else if (mode === "peek" && media) {
@@ -152,7 +164,7 @@ export function Island() {
 
 function CompactView({ mode, media }: { mode: IslandState["mode"]; media: MediaState | null }) {
   return (
-    <div role="status" aria-label={ru.appName} data-mode={mode} className="h-full">
+    <div role="status" aria-label={ru.appName} data-mode={mode} className="relative h-full">
       {media ? (
         <MediaCompact media={media} />
       ) : (
@@ -161,6 +173,10 @@ function CompactView({ mode, media }: { mode: IslandState["mode"]; media: MediaS
           <BatteryIndicator showPercent={false} />
         </div>
       )}
+      {/* Claude Code status sits in the free middle of the pill. */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <ClaudeBadge />
+      </div>
     </div>
   );
 }
@@ -215,7 +231,12 @@ function ExpandedView({
         className="flex min-h-0 flex-1 flex-col items-center justify-center pt-3"
       >
         {player ? (
-          <MediaPlayer media={media} />
+          <>
+            <MediaPlayer media={media} />
+            <div className="mt-3 w-full">
+              <ClaudeSessions />
+            </div>
+          </>
         ) : tab === "clipboard" ? (
           <ClipboardTab />
         ) : tab === "launcher" ? (
@@ -226,6 +247,9 @@ function ExpandedView({
             <LongDate className="mt-1 text-base text-[var(--island-muted)] first-letter:uppercase" />
             <div className="mt-5 text-sm text-[var(--island-muted)]">
               <BatteryIndicator />
+            </div>
+            <div className="mt-4 w-full">
+              <ClaudeSessions />
             </div>
           </>
         ) : (

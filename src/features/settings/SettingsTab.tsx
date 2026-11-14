@@ -12,6 +12,7 @@ import {
   type MonitorInfo,
   type Settings,
 } from "../../ipc/commands";
+import { ClaudeHooksSetting } from "../claude/views";
 import { useClipboardStore } from "../clipboard/store";
 import { comboFromKeyPress } from "./hotkey";
 import { updateSettings, useSettingsStore } from "./store";
@@ -322,6 +323,9 @@ function SettingsForm({ settings }: { settings: Settings }) {
         <span className="w-9 text-right text-xs tabular-nums text-[var(--island-muted)]">
           {Math.round(settings.opacity * 100)}%
         </span>
+      </Row>
+      <Row label={ru.claude.setting}>
+        <ClaudeHooksSetting className={control} />
       </Row>
       <Updates />
     </div>

@@ -139,6 +139,8 @@ export async function setupDemo(scene: Scene): Promise<void> {
           return CLIPS;
         case "launcher_search":
           return LAUNCH;
+        case "claude_status":
+          return [];
         case "monitors_list":
           return [];
         case "update_check":

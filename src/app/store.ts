@@ -13,6 +13,7 @@ export const PEEK_DURATION_MS: Record<PeekKind, number> = {
   media: 3000,
   clipboard: 1500,
   toast: 4000,
+  claude: 6000,
 };
 
 interface IslandStore {

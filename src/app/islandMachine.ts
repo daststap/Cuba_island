@@ -6,8 +6,8 @@ export type Tab = "home" | "clipboard" | "launcher" | "settings";
 
 export const TABS: readonly Tab[] = ["home", "clipboard", "launcher", "settings"];
 
-/** What a peek is about: a track change, a fresh copy or a message. */
-export type PeekKind = "media" | "clipboard" | "toast";
+/** What a peek is about: a track change, a fresh copy, a message or Claude Code waiting. */
+export type PeekKind = "media" | "clipboard" | "toast" | "claude";
 
 export type IslandState =
   | { mode: "hidden" }

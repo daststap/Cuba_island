@@ -5,7 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMediaStore } from "../features/media/store";
 import { ru } from "../i18n/ru";
 import { useSettingsStore } from "../features/settings/store";
-import type { ClipItem, HotkeyStatus, LaunchResult, MediaState, Settings } from "../ipc/commands";
+import { useClaudeStore } from "../features/claude/store";
+import type {
+  ClaudeSession,
+  ClipItem,
+  HotkeyStatus,
+  LaunchResult,
+  MediaState,
+  Settings,
+} from "../ipc/commands";
 import { Island } from "./Island";
 import { initialIslandState } from "./islandMachine";
 import { useIslandStore } from "./store";
@@ -70,6 +78,8 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 let settings = DEFAULT_SETTINGS;
+let claudeSessions: ClaudeSession[] = [];
+let hooksInstalled = false;
 let hotkeys = DEFAULT_HOTKEYS;
 let launcherResults = RESULTS;
 let failRun = false;
@@ -83,6 +93,9 @@ describe("Island", () => {
     useMediaStore.setState({ media: null });
     hotkeys = DEFAULT_HOTKEYS;
     settings = DEFAULT_SETTINGS;
+    claudeSessions = [];
+    hooksInstalled = false;
+    useClaudeStore.setState({ sessions: [], attention: null });
     useSettingsStore.setState({ settings: null, update: null });
     launcherResults = RESULTS;
     failRun = false;
@@ -103,6 +116,16 @@ describe("Island", () => {
           return settings;
         }
         if (cmd === "monitors_list") return [];
+        if (cmd === "claude_status") return claudeSessions;
+        if (cmd === "claude_hooks_status" || cmd === "claude_hooks_set") {
+          hooksInstalled =
+            cmd === "claude_hooks_set" ? (args as { enabled: boolean }).enabled : hooksInstalled;
+          return {
+            installed: hooksInstalled,
+            settingsPath: "C:\\Users\\me\\.claude\\settings.json",
+            error: null,
+          };
+        }
         if (cmd === "update_check") return null;
         if (cmd === "launcher_search") return launcherResults;
         if (cmd === "launcher_run" && failRun) {
@@ -418,6 +441,61 @@ describe("Island", () => {
         await emit("clipboard://added", CLIPS[0]);
       });
       expect(useIslandStore.getState().state.mode).toBe("compact");
+    });
+  });
+
+  describe("Claude Code", () => {
+    const session = (state: ClaudeSession["state"], extra: Partial<ClaudeSession> = {}) => ({
+      id: "s1",
+      project: "escape",
+      state,
+      tool: null,
+      message: null,
+      updatedAt: Date.now(),
+      ...extra,
+    });
+
+    it("shows a badge in the pill while Claude works", async () => {
+      render(<Island />);
+      await act(async () => {
+        await emit("claude://status", [session("working", { tool: "Edit" })]);
+      });
+      expect(screen.getByRole("img", { name: ru.claude.workingShort })).toBeInTheDocument();
+      await act(async () => {
+        await emit("claude://status", [session("idle")]);
+      });
+      expect(screen.queryByRole("img", { name: ru.claude.workingShort })).not.toBeInTheDocument();
+    });
+
+    it("peeks when Claude waits for the user", async () => {
+      render(<Island />);
+      const waiting = session("waiting", { message: "Claude needs your permission to use Bash" });
+      await act(async () => {
+        await emit("claude://status", [waiting]);
+        await emit("claude://attention", waiting);
+      });
+      expect(useIslandStore.getState().state).toEqual({ mode: "peek", kind: "claude" });
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(ru.claude.waiting);
+      expect(alert).toHaveTextContent("escape");
+      expect(alert).toHaveTextContent("permission to use Bash");
+    });
+
+    it("lists active sessions on the home tab", async () => {
+      claudeSessions = [session("working", { tool: "Bash" })];
+      useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
+      render(<Island />);
+      expect(await screen.findByText(ru.claude.usingTool("Bash"))).toBeInTheDocument();
+    });
+
+    it("connects the hooks from settings", async () => {
+      useIslandStore.setState({ state: { mode: "expanded", tab: "settings" } });
+      render(<Island />);
+      fireEvent.click(await screen.findByRole("button", { name: ru.claude.connect }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "claude_hooks_set", args: { enabled: true } });
+      });
+      expect(await screen.findByRole("button", { name: ru.claude.disconnect })).toBeInTheDocument();
     });
   });
 });

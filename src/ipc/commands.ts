@@ -189,6 +189,40 @@ export function monitorsList(): Promise<MonitorInfo[]> {
   return invoke("monitors_list");
 }
 
+/** Mirrors `claude::model::Session`: one Claude Code session seen through its hooks. */
+export interface ClaudeSession {
+  id: string;
+  /** Project folder name. */
+  project: string;
+  state: "working" | "waiting" | "idle";
+  /** Tool in use while working (Edit, Bash…). */
+  tool: string | null;
+  /** What Claude is waiting for. */
+  message: string | null;
+  updatedAt: number;
+}
+
+export function claudeStatus(): Promise<ClaudeSession[]> {
+  return invoke("claude_status");
+}
+
+/** Mirrors `claude::HooksStatus`. */
+export interface ClaudeHooksStatus {
+  installed: boolean;
+  settingsPath: string;
+  /** The local endpoint could not start (port busy). */
+  error: string | null;
+}
+
+export function claudeHooksStatus(): Promise<ClaudeHooksStatus> {
+  return invoke("claude_hooks_status");
+}
+
+/** Adds or removes Escape's hooks in Claude Code's settings.json. */
+export function claudeHooksSet(enabled: boolean): Promise<ClaudeHooksStatus> {
+  return invoke("claude_hooks_set", { enabled });
+}
+
 /** Mirrors `updater::UpdateInfo`. */
 export interface UpdateInfo {
   version: string;
