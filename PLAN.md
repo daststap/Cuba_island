@@ -151,7 +151,9 @@ escape/
 | `media_command` | `{cmd: "toggle"\|"next"\|"prev"}` | — |
 | `clipboard_list` | `{query?, limit, offset}` | `ClipItem[]` |
 | `clipboard_paste` | `{id}` | — |
-| `clipboard_pin` / `clipboard_delete` / `clipboard_clear` | `{id}` / — | — |
+| `clipboard_copy` | `{id}` | — (только в буфер, без вставки) |
+| `clipboard_pin` | `{id, pinned}` | — |
+| `clipboard_delete` / `clipboard_clear` | `{id}` / — | — (закреплённые `clear` не трогает) |
 | `launcher_search` | `{query}` | `LaunchResult[]` |
 | `launcher_run` | `{id}` | — |
 | `settings_get` / `settings_set` | — / `Partial<Settings>` | `Settings` |
@@ -224,18 +226,18 @@ hotkey ─► expanded[clipboard | launcher] (+ input mode)
 **Ручная проверка:** Spotify, Яндекс Музыка в браузере, YouTube в Chrome/Edge. Трек и обложка обновляются, кнопки работают, после паузы эквалайзер останавливается, после закрытия плеера блок исчезает.
 
 ### Этап 3 — Буфер обмена
-- [ ] Модуль `storage`: SQLite в `app_data_dir/escape.db`, миграции через `PRAGMA user_version`.
-- [ ] Таблица `clips(id, kind TEXT CHECK(kind IN ('text','image')), text, image_path, hash UNIQUE, pinned, created_at, used_at)`; картинки — PNG-файлы в `app_data_dir/clips/`, превью 256 px.
-- [ ] Слушатель на отдельном потоке (`clipboard-master`). При изменении:
+- [x] Модуль `storage`: SQLite в `app_data_dir/escape.db`, миграции через `PRAGMA user_version`.
+- [x] Таблица `clips(id, kind TEXT CHECK(kind IN ('text','image')), text, image_path, hash UNIQUE, pinned, created_at, used_at)`; картинки — PNG-файлы в `app_data_dir/clips/`, превью 256 px.
+- [x] Слушатель на отдельном потоке (`clipboard-master`). При изменении:
   - **пропускать** содержимое, если в буфере есть формат `ExcludeClipboardContentFromMonitorProcessing` или `CanIncludeInClipboardHistory` = 0 (менеджеры паролей);
   - **пропускать** изменения, сделанные самим Escape при вставке;
   - дедупликация по хэшу: повторное копирование поднимает запись наверх.
-- [ ] Лимит истории (по умолчанию 500 записей, закреплённые не удаляются), чистка старых картинок с диска.
-- [ ] Глобальная клавиша **Ctrl+Alt+V** → вкладка `clipboard` с полем поиска в фокусе.
-- [ ] **Вставка:** перед открытием по хоткею запомнить `GetForegroundWindow()`. При выборе: записать содержимое в буфер, свернуть остров, `SetForegroundWindow(prev)`, через 50 мс `SendInput` Ctrl+V.
-- [ ] UI: список с поиском (по тексту), навигация стрелками, Enter — вставить, Ctrl+P — закрепить, Del — удалить; картинки — превью; относительное время («2 мин назад»).
-- [ ] `peek` «Скопировано» при новом элементе (отключаемо).
-- [ ] Тесты: дедупликация, лимит, миграции на чистой и существующей БД.
+- [x] Лимит истории (по умолчанию 500 записей, закреплённые не удаляются), чистка старых картинок с диска.
+- [x] Глобальная клавиша **Ctrl+Alt+V** → вкладка `clipboard` с полем поиска в фокусе.
+- [x] **Вставка:** перед открытием по хоткею запомнить `GetForegroundWindow()`. При выборе: записать содержимое в буфер, свернуть остров, `SetForegroundWindow(prev)`, через 50 мс `SendInput` Ctrl+V.
+- [x] UI: список с поиском (по тексту), навигация стрелками, Enter — вставить, Ctrl+P — закрепить, Del — удалить; картинки — превью; относительное время («2 мин назад»). Клик по записи только копирует. При открытии наведением клик в поиск забирает фокус (предыдущее окно запоминается); пока идёт ввод, уход курсора остров не сворачивает.
+- [x] `peek` «Скопировано» при новом элементе (отключаемо). 1,5 с: иконка + начало текста или миниатюра; выключатель появится в настройках (этап 5).
+- [x] Тесты: дедупликация, лимит, миграции на чистой и существующей БД.
 
 **Ручная проверка:**
 1. Скопировать 3 текста и скриншот (Win+Shift+S) — всё в истории.
