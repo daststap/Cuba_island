@@ -78,7 +78,7 @@ pub fn is_private() -> bool {
     match format_id(w!("CanIncludeInClipboardHistory")).filter(|id| has_format(*id)) {
         None => false,
         // Fail closed: if the flag exists but cannot be read, treat the clip as private.
-        Some(id) => read_dword_format(id).is_none_or(|allowed| allowed == 0),
+        Some(id) => !matches!(read_dword_format(id), Some(allowed) if allowed != 0),
     }
 }
 
