@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+/* Island theme tokens. Components read these via Tailwind's arbitrary values or var(). */
+:root {
+  --island-bg: #000;
+  --island-fg: #f5f5f7;
+  --island-muted: #8e8e93;
+  --island-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  /* The window is transparent; only the island itself is painted. */
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
