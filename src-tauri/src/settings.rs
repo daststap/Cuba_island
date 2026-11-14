@@ -110,6 +110,12 @@ pub fn load(app: &AppHandle) -> Settings {
     // The system is the source of truth for autostart (the user may change it in Task Manager).
     if let Ok(enabled) = app.autolaunch().is_enabled() {
         settings.autostart = enabled;
+        // Re-register so the entry points at this exe (e.g. after reinstalling elsewhere).
+        if enabled {
+            if let Err(err) = app.autolaunch().enable() {
+                log::warn!("failed to refresh the autostart entry: {err}");
+            }
+        }
     }
     app.manage(Mutex::new(settings.clone()));
     settings

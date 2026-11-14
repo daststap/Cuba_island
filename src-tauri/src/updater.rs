@@ -20,9 +20,27 @@ fn updater_error(err: tauri_plugin_updater::Error) -> AppError {
     AppError::Unavailable(format!("не удалось проверить обновления: {err}"))
 }
 
+/// Placeholder owner in `tauri.conf.json` until the GitHub repository exists.
+const PLACEHOLDER: &str = "/OWNER/";
+
+/// Whether the update endpoint points at a real repository. With the placeholder
+/// we never contact GitHub: that account could belong to anyone.
+fn updates_configured(app: &AppHandle) -> bool {
+    app.config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|updater| updater.get("endpoints"))
+        .is_some_and(|endpoints| !endpoints.to_string().contains(PLACEHOLDER))
+}
+
 /// Returns the newer version if one is published, `None` if this is the latest.
 #[tauri::command]
 pub async fn update_check(app: AppHandle) -> AppResult<Option<UpdateInfo>> {
+    if !updates_configured(&app) {
+        log::info!("update check skipped: repository not configured yet");
+        return Ok(None);
+    }
     let update = app
         .updater()
         .map_err(updater_error)?
