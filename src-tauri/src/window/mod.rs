@@ -1,7 +1,5 @@
 //! The island window: placement, click-through and full-screen hiding (PLAN.md §4.1–4.4).
 
-#[cfg(windows)]
-mod drop;
 mod geometry;
 #[cfg(windows)]
 mod input;
@@ -198,19 +196,6 @@ pub fn paste_into_previous(app: &AppHandle) -> AppResult<()> {
         return Err(AppError::Internal("не удалось отправить Ctrl+V".into()));
     }
     Ok(())
-}
-
-#[cfg(windows)]
-pub use drop::DropEvent;
-
-/// Accepts files dragged onto the island; `handler` runs on the main thread.
-#[cfg(windows)]
-pub fn install_drop_target(
-    app: &AppHandle,
-    handler: impl Fn(DropEvent) + Send + Sync + 'static,
-) -> AppResult<()> {
-    let (window, _) = island(app)?;
-    drop::install(win32::Hwnd::of(&window)?, handler)
 }
 
 /// Whether the island is currently hidden because a full-screen app is in front.

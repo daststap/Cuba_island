@@ -120,59 +120,118 @@ pub fn start(app: &AppHandle, db: Db) -> AppResult<()> {
     });
     app.manage(shared.clone());
 
-    // Files dragged onto the island arrive through our own OLE drop target
-    // (see window/drop.rs for why Tauri's could not be used).
     #[cfg(windows)]
-    {
-        let app_d = app.clone();
-        crate::window::install_drop_target(app, move |event| {
-            on_drop_event(&app_d, &shared, event);
-        })?;
-    }
+    web_drop::install(app, shared)?;
     Ok(())
 }
 
-/// Payload of `shelf://drag`. Mirrored in `src/ipc/events.ts`.
-#[derive(Clone, Serialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-enum DragPayload {
-    Enter,
-    Leave,
-    Drop,
-}
-
-/// Absolute paths as strings for the store.
-fn usable_paths(paths: &[PathBuf]) -> Vec<String> {
-    paths
-        .iter()
-        .filter(|p| p.is_absolute())
-        .map(|p| p.display().to_string())
-        .collect()
-}
-
+/// Files dropped into the island's page.
+///
+/// Windows hands file drags over the island to WebView2's own drop target (it sits
+/// in the `msedgewebview2` process, above any target we could register), so the
+/// drop happens inside the page. The page sends the dropped `File` objects with
+/// `chrome.webview.postMessageWithAdditionalObjects`, and WebView2 exposes their
+/// real paths to us as `ICoreWebView2File`.
 #[cfg(windows)]
-fn on_drop_event(app: &AppHandle, shared: &ShelfShared, event: crate::window::DropEvent) {
-    use crate::window::DropEvent;
-    let payload = match event {
-        DropEvent::Enter => {
-            log::info!("files dragged over the island");
-            DragPayload::Enter
+mod web_drop {
+    use std::path::PathBuf;
+
+    use tauri::{AppHandle, Manager};
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2File, ICoreWebView2WebMessageReceivedEventArgs,
+        ICoreWebView2WebMessageReceivedEventArgs2,
+    };
+    use webview2_com::WebMessageReceivedEventHandler;
+    use windows::core::{Interface, PWSTR};
+    use windows::Win32::System::Com::CoTaskMemFree;
+
+    use super::{changed, now_ms, store, Shared};
+    use crate::error::{AppError, AppResult};
+
+    /// Must match `SHELF_DROP_MESSAGE` in `src/features/shelf/store.ts`.
+    const MESSAGE: &str = "escape://shelf-drop";
+
+    /// Reads and frees a COM-allocated wide string.
+    fn take_string(raw: PWSTR) -> Option<String> {
+        if raw.is_null() {
+            return None;
         }
-        DropEvent::Leave => DragPayload::Leave,
-        DropEvent::Drop(paths) => {
-            let paths = usable_paths(&paths);
-            log::info!("{} item(s) dropped on the shelf", paths.len());
-            if !paths.is_empty() {
-                match store::add(&shared.db.lock(), &paths, now_ms()) {
-                    Ok(()) => changed(app),
-                    Err(err) => log::error!("failed to put dropped files on the shelf: {err}"),
+        // SAFETY: WebView2 allocated `raw` with CoTaskMemAlloc and handed it to us.
+        unsafe {
+            let text = raw.to_string().ok();
+            CoTaskMemFree(Some(raw.0 as *const _));
+            text
+        }
+    }
+
+    fn dropped_paths(args: &ICoreWebView2WebMessageReceivedEventArgs) -> Option<Vec<PathBuf>> {
+        let mut raw = PWSTR::null();
+        // SAFETY: `raw` is a valid out pointer; ownership of the string passes to us.
+        unsafe { args.TryGetWebMessageAsString(&mut raw) }.ok()?;
+        if take_string(raw)? != MESSAGE {
+            return None; // not ours (Tauri's own IPC uses this channel too)
+        }
+        let args: ICoreWebView2WebMessageReceivedEventArgs2 = args.cast().ok()?;
+        // SAFETY: plain COM calls on live objects; out pointers are valid locals.
+        unsafe {
+            let objects = args.AdditionalObjects().ok()?;
+            let mut count = 0;
+            objects.Count(&mut count).ok()?;
+            let mut paths = Vec::new();
+            for index in 0..count {
+                let Ok(file) = objects
+                    .GetValueAtIndex(index)
+                    .and_then(|object| object.cast::<ICoreWebView2File>())
+                else {
+                    continue;
+                };
+                let mut path = PWSTR::null();
+                if file.Path(&mut path).is_ok() {
+                    paths.extend(take_string(path).map(PathBuf::from));
                 }
             }
-            DragPayload::Drop
+            Some(paths)
         }
-    };
-    if let Err(err) = app.emit("shelf://drag", payload) {
-        log::warn!("failed to emit shelf://drag: {err}");
+    }
+
+    pub fn install(app: &AppHandle, shared: Shared) -> AppResult<()> {
+        let window = app
+            .get_webview_window(crate::window::WINDOW_LABEL)
+            .ok_or_else(|| AppError::Internal("нет окна острова".into()))?;
+        let app = app.clone();
+        window.with_webview(move |webview| {
+            let handler = WebMessageReceivedEventHandler::create(Box::new(move |_, args| {
+                let Some(paths) = args.as_ref().and_then(dropped_paths) else {
+                    return Ok(());
+                };
+                let paths: Vec<String> = paths
+                    .iter()
+                    .filter(|p| p.is_absolute())
+                    .map(|p| p.display().to_string())
+                    .collect();
+                log::info!("{} item(s) dropped on the shelf", paths.len());
+                if !paths.is_empty() {
+                    match store::add(&shared.db.lock(), &paths, now_ms()) {
+                        Ok(()) => changed(&app),
+                        Err(err) => log::error!("failed to put dropped files on the shelf: {err}"),
+                    }
+                }
+                Ok(())
+            }));
+            let mut token = 0;
+            // SAFETY: registering an event handler on the island's live WebView2.
+            let result = unsafe {
+                webview
+                    .controller()
+                    .CoreWebView2()
+                    .and_then(|core| core.add_WebMessageReceived(&handler, &mut token))
+            };
+            match result {
+                Ok(()) => log::info!("shelf drop handler installed"),
+                Err(err) => log::error!("failed to install the shelf drop handler: {err}"),
+            }
+        })?;
+        Ok(())
     }
 }
 

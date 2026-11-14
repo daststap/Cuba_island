@@ -6,7 +6,7 @@ import { useMediaStore } from "../features/media/store";
 import { ru } from "../i18n/ru";
 import { useSettingsStore } from "../features/settings/store";
 import { useClaudeStore } from "../features/claude/store";
-import { handleFileDrag, useShelfStore } from "../features/shelf/store";
+import { SHELF_DROP_MESSAGE, useShelfStore } from "../features/shelf/store";
 import type {
   ShelfItem,
   ClaudeSession,
@@ -571,42 +571,84 @@ describe("Island", () => {
       expect(await screen.findByRole("img", { name: ru.shelf.count(2) })).toBeInTheDocument();
     });
 
+    /** A DOM drag event carrying files, as WebView2 delivers a drag from Explorer. */
+    const fileDrag = (type: string, files: unknown[] = []) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, "dataTransfer", {
+        value: {
+          types: ["Files"],
+          files: Object.assign(files, { item: () => null }),
+          dropEffect: "none",
+        },
+      });
+      return event;
+    };
+
     it("opens the shelf when files are dragged over, even from the home tab", async () => {
       useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
       render(<Island />);
-      await act(async () => {
-        await emit("shelf://drag", { type: "enter" });
+      const enter = fileDrag("dragenter");
+      act(() => {
+        window.dispatchEvent(enter);
       });
+      expect(enter.defaultPrevented).toBe(true);
       expect(useIslandStore.getState().state).toEqual({ mode: "expanded", tab: "shelf" });
       expect(await screen.findByText(ru.shelf.dropHere)).toBeInTheDocument();
+      act(() => {
+        window.dispatchEvent(fileDrag("dragleave"));
+      });
+      expect(screen.queryByText(ru.shelf.dropHere)).not.toBeInTheDocument();
     });
 
     it("does not collapse while a file is dragged over the island", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       render(<Island />);
-      await act(async () => {
-        await emit("shelf://drag", { type: "enter" });
-        await emit("island://hover", { inside: false });
+      act(() => {
+        window.dispatchEvent(fileDrag("dragenter"));
       });
       await act(async () => {
+        await emit("island://hover", { inside: false });
         await vi.advanceTimersByTimeAsync(1000);
       });
       expect(useIslandStore.getState().state.mode).toBe("expanded");
     });
 
-    it("drops hand over to Rust, which stores the files itself", async () => {
+    it("hands dropped files to Rust through WebView2, which stores them", async () => {
+      const posted: unknown[][] = [];
+      vi.stubGlobal("chrome", {
+        webview: {
+          postMessageWithAdditionalObjects: (...args: unknown[]) => posted.push(args),
+        },
+      });
       render(<Island />);
       act(() => {
-        handleFileDrag({ type: "enter" });
+        window.dispatchEvent(fileDrag("dragenter"));
       });
+      const file = { name: "отчёт.pdf" };
+      const drop = fileDrag("drop", [file]);
+      act(() => {
+        window.dispatchEvent(drop);
+      });
+      expect(drop.defaultPrevented).toBe(true);
+      expect(posted).toHaveLength(1);
+      expect(posted[0]?.[0]).toBe(SHELF_DROP_MESSAGE);
+      expect(posted[0]?.[1]).toContain(file);
+
       shelfItems = SHELF;
       await act(async () => {
-        await emit("shelf://drag", { type: "drop" });
         await emit("shelf://changed");
       });
       expect(await screen.findByText("отчёт.pdf")).toBeInTheDocument();
       expect(screen.queryByText(ru.shelf.dropHere)).not.toBeInTheDocument();
-      expect(calls.some((c) => c.cmd === "shelf_add")).toBe(false);
+    });
+
+    it("never lets a dropped file open inside the island", () => {
+      render(<Island />);
+      const over = new Event("dragover", { cancelable: true });
+      act(() => {
+        window.dispatchEvent(over);
+      });
+      expect(over.defaultPrevented).toBe(true);
     });
   });
 });

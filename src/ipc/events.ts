@@ -28,7 +28,6 @@ interface EventMap {
   "claude://status": ClaudeSession[];
   "claude://attention": ClaudeSession | null;
   "shelf://changed": null;
-  "shelf://drag": FileDrag;
 }
 
 function subscribe<K extends keyof EventMap>(
@@ -85,12 +84,3 @@ export const onClaudeAttention = (handler: (session: ClaudeSession | null) => vo
   subscribe("claude://attention", handler);
 
 export const onShelfChanged = (handler: () => void) => subscribe("shelf://changed", handler);
-
-/** Mirrors `shelf::DragPayload`: files dragged over / dropped on the island. */
-export interface FileDrag {
-  type: "enter" | "leave" | "drop";
-}
-
-/** Rust catches the native drop (and already put the files on the shelf on "drop"). */
-export const onFileDrag = (handler: (event: FileDrag) => void) =>
-  subscribe("shelf://drag", handler);
