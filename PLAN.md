@@ -279,7 +279,7 @@ hotkey ─► expanded[clipboard | launcher] (+ input mode)
 - [ ] Скриншот области с разметкой.
 - [ ] Индикаторы микрофона, камеры и Caps Lock.
 - [ ] Загрузки браузера и Steam.
-- [ ] Статус Claude Code в пилюле (через хуки Claude Code → локальный HTTP-эндпоинт).
+- [x] Статус Claude Code в пилюле (через хуки Claude Code → локальный HTTP-эндпоинт). Эндпоинт `127.0.0.1:47821/escape/claude-code` (только JSON, без `Origin`); значок в центре пилюли (работает / ждёт), peek «Claude ждёт вас», сессии на главной; хуки подключаются кнопкой в настройках (только свои записи в `~/.claude/settings.json`, с резервной копией).
 - [ ] ИИ-чат со своим API-ключом.
 - [ ] Уведомления Windows (MSIX-упаковка + `UserNotificationListener`).
 
