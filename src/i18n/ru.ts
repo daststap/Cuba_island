@@ -39,4 +39,25 @@ export const ru = {
     hoursAgo: (n: number) => `${String(n)} ч назад`,
     yesterday: "вчера",
   },
+  launcher: {
+    input: "Программа, выражение или поиск",
+    results: "Результаты",
+    hint: "↑↓ — выбрать · Enter — запустить · Esc — закрыть",
+    empty: "Начните печатать: название программы, 2+2*2 или запрос для поиска",
+    app: "Приложение",
+    calc: "Калькулятор · Enter — скопировать",
+    webTitle: (query: string) => `Искать в браузере: ${query}`,
+    webSubtitle: "Яндекс",
+    command: "Команда Escape",
+    commands: {
+      "cmd:settings": "Настройки Escape",
+      "cmd:lock": "Заблокировать компьютер",
+      "cmd:quit": "Выйти из Escape",
+    } as Record<string, string>,
+  },
+  hotkeys: {
+    launcherFallback: (key: string) => `Alt+Space занят другой программой — используйте ${key}`,
+    launcherUnavailable: "Не удалось назначить клавишу для командной строки",
+    clipboardUnavailable: "Ctrl+Alt+V занят другой программой",
+  },
 } as const;

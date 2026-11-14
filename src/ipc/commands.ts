@@ -119,8 +119,46 @@ export function getBattery(): Promise<Battery | null> {
   return invoke("get_battery");
 }
 
-/** Logs a failed command. Errors are shown as toasts once toasts exist. */
+/** Mirrors `launcher::LaunchResult`. */
+export interface LaunchResult {
+  /** `app:…`, `cmd:…`, `calc:…` or `web:…` — passed back to `launcherRun`. */
+  id: string;
+  kind: "app" | "command" | "calc" | "web";
+  /** App name, calculator answer or search query (commands are labelled in `ru.ts`). */
+  title: string;
+  iconPath: string | null;
+}
+
+export function launcherSearch(query: string): Promise<LaunchResult[]> {
+  return invoke("launcher_search", { query });
+}
+
+export function launcherRun(id: string): Promise<void> {
+  return invoke("launcher_run", { id });
+}
+
+/** Mirrors `hotkeys::HotkeyStatus`. */
+export interface HotkeyStatus {
+  clipboard: string | null;
+  launcher: string | null;
+  launcherFallback: boolean;
+}
+
+export function hotkeysStatus(): Promise<HotkeyStatus> {
+  return invoke("hotkeys_status");
+}
+
+type ErrorSink = (message: string) => void;
+let errorSink: ErrorSink | undefined;
+
+/** Lets the app show command errors (as toasts in the island). */
+export function setErrorSink(sink: ErrorSink | undefined): void {
+  errorSink = sink;
+}
+
+/** Logs a failed command and shows its message to the user. */
 export function reportError(context: string, error: unknown): void {
-  const message = isAppError(error) ? `${error.kind}: ${error.message}` : String(error);
-  console.error(`[${context}] ${message}`);
+  const message = isAppError(error) ? error.message : String(error);
+  console.error(`[${context}] ${isAppError(error) ? `${error.kind}: ` : ""}${message}`);
+  errorSink?.(message);
 }

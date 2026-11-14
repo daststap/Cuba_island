@@ -4,7 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useMediaStore } from "../features/media/store";
 import { ru } from "../i18n/ru";
-import type { ClipItem, MediaState } from "../ipc/commands";
+import type { ClipItem, HotkeyStatus, LaunchResult, MediaState } from "../ipc/commands";
 import { Island } from "./Island";
 import { initialIslandState } from "./islandMachine";
 import { useIslandStore } from "./store";
@@ -43,14 +43,32 @@ const CLIPS: ClipItem[] = [
   },
 ];
 
+const DEFAULT_HOTKEYS: HotkeyStatus = {
+  clipboard: "Ctrl+Alt+V",
+  launcher: "Alt+Space",
+  launcherFallback: false,
+};
+const RESULTS: LaunchResult[] = [
+  { id: "calc:6", kind: "calc", title: "6", iconPath: null },
+  { id: "app:Chrome", kind: "app", title: "Google Chrome", iconPath: null },
+  { id: "cmd:lock", kind: "command", title: "", iconPath: null },
+  { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
+];
+
+let hotkeys = DEFAULT_HOTKEYS;
+let launcherResults = RESULTS;
+let failRun = false;
 let mediaOnStart: MediaState | null = null;
 const commands: unknown[] = [];
 const calls: { cmd: string; args: unknown }[] = [];
 
 describe("Island", () => {
   beforeEach(() => {
-    useIslandStore.setState({ state: initialIslandState, inputMode: false });
+    useIslandStore.setState({ state: initialIslandState, inputMode: false, toast: null });
     useMediaStore.setState({ media: null });
+    hotkeys = DEFAULT_HOTKEYS;
+    launcherResults = RESULTS;
+    failRun = false;
     mediaOnStart = null;
     commands.length = 0;
     calls.length = 0;
@@ -61,6 +79,13 @@ describe("Island", () => {
         if (cmd === "media_get_state") return mediaOnStart;
         if (cmd === "media_command") commands.push(args);
         if (cmd === "clipboard_list") return CLIPS;
+        if (cmd === "hotkeys_status") return hotkeys;
+        if (cmd === "launcher_search") return launcherResults;
+        if (cmd === "launcher_run" && failRun) {
+          // Tauri rejects with the serialized AppError object, not an Error.
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+          return Promise.reject({ kind: "unavailable", message: "Не удалось" });
+        }
         return null;
       },
       { shouldMockEvents: true },
@@ -228,6 +253,68 @@ describe("Island", () => {
       expect(useIslandStore.getState().state).toEqual({ mode: "peek", kind: "clipboard" });
       expect(await screen.findByText(ru.clipboard.copied)).toBeInTheDocument();
       expect(screen.getByText("только что скопированный текст")).toBeInTheDocument();
+    });
+  });
+
+  describe("launcher", () => {
+    const openAndType = async (text: string) => {
+      render(<Island />);
+      await act(async () => {
+        await emit("hotkey://launcher");
+      });
+      const input = await screen.findByRole("combobox", { name: ru.launcher.input });
+      fireEvent.change(input, { target: { value: text } });
+      await screen.findByText("= 6");
+      return input;
+    };
+
+    it("opens on Alt+Space with the input focused and shows labelled results", async () => {
+      const input = await openAndType("2+2*2");
+      expect(input).toHaveFocus();
+      expect(useIslandStore.getState().state).toEqual({ mode: "expanded", tab: "launcher" });
+      expect(calls).toContainEqual({ cmd: "launcher_search", args: { query: "2+2*2" } });
+      expect(screen.getByText("Google Chrome")).toBeInTheDocument();
+      expect(screen.getByText(ru.launcher.commands["cmd:lock"] ?? "")).toBeInTheDocument();
+      expect(screen.getByText(ru.launcher.webTitle("2+2*2"))).toBeInTheDocument();
+    });
+
+    it("launches the selected app with Enter without asking for focus back", async () => {
+      const input = await openAndType("2+2*2");
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(useIslandStore.getState().state.mode).toBe("compact");
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "launcher_run", args: { id: "app:Chrome" } });
+      });
+      expect(calls.some((c) => c.cmd === "set_input_mode")).toBe(false);
+    });
+
+    it("copies a calculator answer and returns focus", async () => {
+      const input = await openAndType("2+2*2");
+      fireEvent.keyDown(input, { key: "Enter" });
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "launcher_run", args: { id: "calc:6" } });
+      });
+      expect(calls).toContainEqual({ cmd: "set_input_mode", args: { enabled: false } });
+    });
+
+    it("shows a toast when a command fails", async () => {
+      failRun = true;
+      const input = await openAndType("2+2*2");
+      fireEvent.keyDown(input, { key: "Enter" });
+      await vi.waitFor(() => {
+        expect(useIslandStore.getState().toast).toBe("Не удалось");
+      });
+      expect(useIslandStore.getState().state).toEqual({ mode: "peek", kind: "toast" });
+      expect(await screen.findByRole("alert")).toHaveTextContent("Не удалось");
+    });
+
+    it("warns once when Alt+Space was taken", async () => {
+      hotkeys = { ...DEFAULT_HOTKEYS, launcher: "Ctrl+Alt+Space", launcherFallback: true };
+      render(<Island />);
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        ru.hotkeys.launcherFallback("Ctrl+Alt+Space"),
+      );
     });
   });
 });

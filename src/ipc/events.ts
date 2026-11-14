@@ -22,6 +22,7 @@ interface EventMap {
   "media://changed": MediaState | null;
   "clipboard://added": ClipItem;
   "hotkey://clipboard": null;
+  "hotkey://launcher": null;
 }
 
 function subscribe<K extends keyof EventMap>(
@@ -63,3 +64,5 @@ export const onClipAdded = (handler: (p: ClipItem) => void) =>
   subscribe("clipboard://added", handler);
 
 export const onClipboardHotkey = (handler: () => void) => subscribe("hotkey://clipboard", handler);
+
+export const onLauncherHotkey = (handler: () => void) => subscribe("hotkey://launcher", handler);
