@@ -3,6 +3,7 @@ export const ru = {
   appName: "Escape",
   tabs: {
     home: "Главная",
+    shelf: "Полка",
     clipboard: "Буфер",
     launcher: "Команды",
     settings: "Настройки",
@@ -98,6 +99,17 @@ export const ru = {
     waiting: "Claude ждёт вас",
     waitingShort: "Claude Code ждёт вашего ответа",
     usingTool: (tool: string) => `работает · ${tool}`,
+  },
+  shelf: {
+    label: "Файлы на полке",
+    empty: "Перетащите сюда файлы — они подождут здесь, пока не понадобятся",
+    dropHere: "Отпустите, чтобы положить на полку",
+    hint: "Тащите файл отсюда в любую программу · двойной клик — открыть",
+    remove: (name: string) => `Убрать «${name}» с полки`,
+    clear: "Очистить полку",
+    missing: "файл не найден",
+    folder: "папка",
+    count: (n: number) => `Файлов на полке: ${String(n)}`,
   },
   onboarding: {
     question: "Запускать Escape вместе с Windows?",

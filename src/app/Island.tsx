@@ -11,6 +11,8 @@ import { useMediaStore, useMediaSync } from "../features/media/store";
 import { useCoverColor } from "../features/media/useCoverColor";
 import { MediaCompact, MediaPeek, MediaPlayer } from "../features/media/views";
 import { Onboarding, SettingsTab } from "../features/settings/SettingsTab";
+import { ShelfBadge, ShelfTab } from "../features/shelf/ShelfTab";
+import { useShelfSync } from "../features/shelf/store";
 import { useSettingsStore, useSettingsSync } from "../features/settings/store";
 import { ru } from "../i18n/ru";
 import type { MediaState, UpdateInfo } from "../ipc/commands";
@@ -42,6 +44,7 @@ export function Island() {
   useMediaSync();
   useClipboardSync();
   useClaudeSync();
+  useShelfSync();
   useSettingsSync(announceUpdate);
   const state = useIslandStore((s) => s.state);
   const dispatch = useIslandStore((s) => s.dispatch);
@@ -174,8 +177,9 @@ function CompactView({ mode, media }: { mode: IslandState["mode"]; media: MediaS
         </div>
       )}
       {/* Claude Code status sits in the free middle of the pill. */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2">
         <ClaudeBadge />
+        <ShelfBadge />
       </div>
     </div>
   );
@@ -237,6 +241,8 @@ function ExpandedView({
               <ClaudeSessions />
             </div>
           </>
+        ) : tab === "shelf" ? (
+          <ShelfTab />
         ) : tab === "clipboard" ? (
           <ClipboardTab />
         ) : tab === "launcher" ? (

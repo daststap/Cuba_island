@@ -223,6 +223,46 @@ export function claudeHooksSet(enabled: boolean): Promise<ClaudeHooksStatus> {
   return invoke("claude_hooks_set", { enabled });
 }
 
+/** Mirrors `shelf::ShelfItem`: a reference to a file parked on the island. */
+export interface ShelfItem {
+  id: number;
+  path: string;
+  name: string;
+  isDir: boolean;
+  /** Bytes; null for folders and missing files. */
+  size: number | null;
+  /** The original was moved or deleted. */
+  missing: boolean;
+  /** Icon or thumbnail; load it via `convertFileSrc`. */
+  imagePath: string | null;
+  addedAt: number;
+}
+
+export function shelfList(): Promise<ShelfItem[]> {
+  return invoke("shelf_list");
+}
+
+export function shelfAdd(paths: string[]): Promise<void> {
+  return invoke("shelf_add", { paths });
+}
+
+export function shelfRemove(ids: number[]): Promise<void> {
+  return invoke("shelf_remove", { ids });
+}
+
+export function shelfClear(): Promise<void> {
+  return invoke("shelf_clear");
+}
+
+export function shelfOpen(id: number): Promise<void> {
+  return invoke("shelf_open", { id });
+}
+
+/** Starts a system drag of the items; resolves `true` if they were dropped somewhere. */
+export function shelfDragOut(ids: number[]): Promise<boolean> {
+  return invoke("shelf_drag_out", { ids });
+}
+
 /** Mirrors `updater::UpdateInfo`. */
 export interface UpdateInfo {
   version: string;

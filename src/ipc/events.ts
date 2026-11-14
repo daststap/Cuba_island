@@ -3,6 +3,7 @@
  * unsubscribe function suitable for a `useEffect` cleanup.
  */
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Battery, ClaudeSession, ClipItem, MediaState, Settings } from "./commands";
 
 export interface HoverPayload {
@@ -27,6 +28,7 @@ interface EventMap {
   "tray://settings": null;
   "claude://status": ClaudeSession[];
   "claude://attention": ClaudeSession | null;
+  "shelf://changed": null;
 }
 
 function subscribe<K extends keyof EventMap>(
@@ -81,3 +83,40 @@ export const onClaudeStatus = (handler: (sessions: ClaudeSession[]) => void) =>
 
 export const onClaudeAttention = (handler: (session: ClaudeSession | null) => void) =>
   subscribe("claude://attention", handler);
+
+export const onShelfChanged = (handler: () => void) => subscribe("shelf://changed", handler);
+
+export type FileDrop =
+  | { type: "enter"; paths: string[] }
+  | { type: "over" }
+  | { type: "drop"; paths: string[] }
+  | { type: "leave" };
+
+/** Files dragged over / dropped on the island window (Tauri's native drag-drop). */
+export function onFileDrop(handler: (event: FileDrop) => void): () => void {
+  let unlisten: UnlistenFn | undefined;
+  let disposed = false;
+  try {
+    getCurrentWebview()
+      .onDragDropEvent((e) => {
+        const p = e.payload;
+        if (p.type === "enter") handler({ type: "enter", paths: p.paths });
+        else if (p.type === "drop") handler({ type: "drop", paths: p.paths });
+        else handler({ type: p.type });
+      })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      })
+      .catch((error: unknown) => {
+        console.error("[listen drag-drop]", error);
+      });
+  } catch (error: unknown) {
+    // Outside Tauri (tests, demo) there is no webview to listen to.
+    console.warn("[listen drag-drop]", error);
+  }
+  return () => {
+    disposed = true;
+    unlisten?.();
+  };
+}

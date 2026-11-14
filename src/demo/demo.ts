@@ -5,7 +5,7 @@
  */
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { useIslandStore } from "../app/store";
-import type { ClipItem, LaunchResult, MediaState, Settings } from "../ipc/commands";
+import type { ClipItem, LaunchResult, MediaState, Settings, ShelfItem } from "../ipc/commands";
 
 export const SCENES = [
   "compact",
@@ -15,6 +15,7 @@ export const SCENES = [
   "clipboard",
   "launcher",
   "settings",
+  "shelf",
 ] as const;
 export type Scene = (typeof SCENES)[number];
 
@@ -102,6 +103,39 @@ const CLIPS: ClipItem[] = [
   },
 ];
 
+const SHELF: ShelfItem[] = [
+  {
+    id: 1,
+    path: "C:\\Users\\me\\Desktop\\Отчёт за ноябрь.pdf",
+    name: "Отчёт за ноябрь.pdf",
+    isDir: false,
+    size: 2_480_000,
+    missing: false,
+    imagePath: null,
+    addedAt: 3,
+  },
+  {
+    id: 2,
+    path: "C:\\Users\\me\\Pictures\\island-mockup.png",
+    name: "island-mockup.png",
+    isDir: false,
+    size: 812_000,
+    missing: false,
+    imagePath: null,
+    addedAt: 2,
+  },
+  {
+    id: 3,
+    path: "D:\\projects\\escape",
+    name: "escape",
+    isDir: true,
+    size: null,
+    missing: false,
+    imagePath: null,
+    addedAt: 1,
+  },
+];
+
 const LAUNCH: LaunchResult[] = [
   { id: "calc:6", kind: "calc", title: "6", iconPath: null },
   { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
@@ -139,6 +173,8 @@ export async function setupDemo(scene: Scene): Promise<void> {
           return CLIPS;
         case "launcher_search":
           return LAUNCH;
+        case "shelf_list":
+          return scene === "shelf" ? SHELF : [];
         case "claude_status":
           return [];
         case "monitors_list":
@@ -170,6 +206,7 @@ export async function setupDemo(scene: Scene): Promise<void> {
     case "clipboard":
     case "launcher":
     case "settings":
+    case "shelf":
       store.setState({ state: { mode: "expanded", tab: scene }, inputMode: true });
       break;
   }

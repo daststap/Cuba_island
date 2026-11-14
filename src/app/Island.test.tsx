@@ -6,7 +6,9 @@ import { useMediaStore } from "../features/media/store";
 import { ru } from "../i18n/ru";
 import { useSettingsStore } from "../features/settings/store";
 import { useClaudeStore } from "../features/claude/store";
+import { handleFileDrop, useShelfStore } from "../features/shelf/store";
 import type {
+  ShelfItem,
   ClaudeSession,
   ClipItem,
   HotkeyStatus,
@@ -79,6 +81,29 @@ const DEFAULT_SETTINGS: Settings = {
 
 let settings = DEFAULT_SETTINGS;
 let claudeSessions: ClaudeSession[] = [];
+const SHELF: ShelfItem[] = [
+  {
+    id: 7,
+    path: "C:\\Users\\me\\Desktop\\отчёт.pdf",
+    name: "отчёт.pdf",
+    isDir: false,
+    size: 4300,
+    missing: false,
+    imagePath: null,
+    addedAt: 2,
+  },
+  {
+    id: 8,
+    path: "C:\\old\\gone.txt",
+    name: "gone.txt",
+    isDir: false,
+    size: null,
+    missing: true,
+    imagePath: null,
+    addedAt: 1,
+  },
+];
+let shelfItems: ShelfItem[] = [];
 let hooksInstalled = false;
 let hotkeys = DEFAULT_HOTKEYS;
 let launcherResults = RESULTS;
@@ -94,6 +119,8 @@ describe("Island", () => {
     hotkeys = DEFAULT_HOTKEYS;
     settings = DEFAULT_SETTINGS;
     claudeSessions = [];
+    shelfItems = [];
+    useShelfStore.setState({ items: [], dragging: false });
     hooksInstalled = false;
     useClaudeStore.setState({ sessions: [], attention: null });
     useSettingsStore.setState({ settings: null, update: null });
@@ -117,6 +144,8 @@ describe("Island", () => {
         }
         if (cmd === "monitors_list") return [];
         if (cmd === "claude_status") return claudeSessions;
+        if (cmd === "shelf_list") return shelfItems;
+        if (cmd === "shelf_drag_out") return true;
         if (cmd === "claude_hooks_status" || cmd === "claude_hooks_set") {
           hooksInstalled =
             cmd === "claude_hooks_set" ? (args as { enabled: boolean }).enabled : hooksInstalled;
@@ -496,6 +525,66 @@ describe("Island", () => {
         expect(calls).toContainEqual({ cmd: "claude_hooks_set", args: { enabled: true } });
       });
       expect(await screen.findByRole("button", { name: ru.claude.disconnect })).toBeInTheDocument();
+    });
+  });
+
+  describe("shelf", () => {
+    const openShelf = async () => {
+      shelfItems = SHELF;
+      useIslandStore.setState({ state: { mode: "expanded", tab: "shelf" } });
+      render(<Island />);
+      return screen.findByText("отчёт.pdf");
+    };
+
+    it("shows parked files with size and marks missing ones", async () => {
+      await openShelf();
+      expect(screen.getByText("4,2 КБ")).toBeInTheDocument();
+      expect(screen.getByText(ru.shelf.missing)).toBeInTheDocument();
+    });
+
+    it("hands a file to the system drag after the pointer moves", async () => {
+      const name = await openShelf();
+      const tile = name.closest("li");
+      if (!tile) throw new Error("tile not found");
+      fireEvent.pointerDown(tile, { button: 0, clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(tile, { clientX: 11, clientY: 11 });
+      expect(calls.some((c) => c.cmd === "shelf_drag_out")).toBe(false);
+      fireEvent.pointerMove(tile, { clientX: 20, clientY: 14 });
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "shelf_drag_out", args: { ids: [7] } });
+      });
+    });
+
+    it("opens on double click and removes with the cross", async () => {
+      const name = await openShelf();
+      fireEvent.doubleClick(name);
+      fireEvent.click(screen.getByRole("button", { name: ru.shelf.remove("отчёт.pdf") }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "shelf_open", args: { id: 7 } });
+        expect(calls).toContainEqual({ cmd: "shelf_remove", args: { ids: [7] } });
+      });
+    });
+
+    it("counts parked files in the pill", async () => {
+      shelfItems = SHELF;
+      render(<Island />);
+      expect(await screen.findByRole("img", { name: ru.shelf.count(2) })).toBeInTheDocument();
+    });
+
+    it("opens the shelf when files are dragged over and stores dropped ones", async () => {
+      render(<Island />);
+      act(() => {
+        handleFileDrop({ type: "enter", paths: ["C:\\a.png"] });
+      });
+      expect(useIslandStore.getState().state).toEqual({ mode: "expanded", tab: "shelf" });
+      expect(await screen.findByText(ru.shelf.dropHere)).toBeInTheDocument();
+      act(() => {
+        handleFileDrop({ type: "drop", paths: ["C:\\a.png", "C:\\b"] });
+      });
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "shelf_add", args: { paths: ["C:\\a.png", "C:\\b"] } });
+      });
+      expect(screen.queryByText(ru.shelf.dropHere)).not.toBeInTheDocument();
     });
   });
 });
