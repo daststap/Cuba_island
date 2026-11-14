@@ -28,6 +28,18 @@ struct Entry {
     icon: Option<String>,
 }
 
+/// AUMID of the Windows Settings app (called «Настройки» or «Параметры» depending on the build).
+pub(crate) const SETTINGS_AUMID: &str =
+    "windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel";
+
+/// Extra words some well-known apps should be found by.
+fn app_keywords(id: &str) -> &'static str {
+    match id.strip_prefix("app:") {
+        Some(SETTINGS_AUMID) => "Параметры Настройки Settings",
+        _ => "",
+    }
+}
+
 /// Built-in commands: id and words they are found by (the label lives in `ru.ts`).
 const COMMANDS: &[(&str, &str)] = &[
     ("cmd:settings", "Настройки Escape settings"),
@@ -121,7 +133,7 @@ fn build_results(
         .map(|app| Candidate {
             id: &app.id,
             name: &app.name,
-            keywords: "",
+            keywords: app_keywords(&app.id),
         })
         .chain(COMMANDS.iter().map(|(id, words)| Candidate {
             id,
@@ -316,6 +328,19 @@ mod tests {
         let lock = build_results("lock", &apps(), &HashMap::new());
         assert_eq!(lock[0].id, "cmd:lock");
         assert_eq!(lock[0].kind, ResultKind::Command);
+    }
+
+    #[test]
+    fn finds_windows_settings_by_either_name() {
+        let settings = vec![Entry {
+            id: format!("app:{SETTINGS_AUMID}"),
+            name: "Настройки".to_owned(),
+            icon: None,
+        }];
+        for query in ["парам", "настр", "settings"] {
+            let results = build_results(query, &settings, &HashMap::new());
+            assert_eq!(results[0].title, "Настройки", "query {query}");
+        }
     }
 
     #[test]

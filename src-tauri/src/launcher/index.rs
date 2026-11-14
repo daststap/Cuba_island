@@ -6,7 +6,9 @@
 
 use std::path::{Path, PathBuf};
 
-use windows::core::{Interface, PWSTR};
+use windows::core::{Interface, HSTRING, PWSTR};
+
+use super::SETTINGS_AUMID;
 use windows::Win32::Foundation::SIZE;
 use windows::Win32::Graphics::Gdi::{
     DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO, BITMAPINFOHEADER,
@@ -15,8 +17,8 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::UI::Shell::{
     BHID_EnumItems, FOLDERID_AppsFolder, IEnumShellItems, IShellItem, IShellItemImageFactory,
-    SHGetKnownFolderItem, KF_FLAG_DEFAULT, SIGDN, SIGDN_NORMALDISPLAY, SIGDN_PARENTRELATIVEPARSING,
-    SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
+    SHCreateItemFromParsingName, SHGetKnownFolderItem, KF_FLAG_DEFAULT, SIGDN, SIGDN_NORMALDISPLAY,
+    SIGDN_PARENTRELATIVEPARSING, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
 };
 
 /// Icons are shown at 32 logical px; 48 keeps them sharp at 150%.
@@ -48,30 +50,49 @@ pub fn scan(icon_dir: &Path) -> windows::core::Result<Vec<App>> {
         let Some(item) = batch[0].take().filter(|_| fetched == 1) else {
             break;
         };
-        let (Some(name), Some(parsing_name)) = (
-            display_name(&item, SIGDN_NORMALDISPLAY),
-            display_name(&item, SIGDN_PARENTRELATIVEPARSING),
-        ) else {
-            continue;
-        };
-        // Web links pinned to Start are not apps.
-        if name.trim().is_empty() || parsing_name.starts_with("http") {
-            continue;
-        }
-        let icon = icon_path(icon_dir, &parsing_name);
-        let icon = if icon.exists() || save_icon(&item, &icon).is_ok() {
-            Some(icon)
-        } else {
-            None
-        };
-        apps.push(App {
-            name,
-            parsing_name,
-            icon,
-        });
+        apps.extend(to_app(&item, icon_dir));
     }
+
+    // Windows Settings is not always listed in AppsFolder, but people expect to find it.
+    if !apps.iter().any(|app| app.parsing_name == SETTINGS_AUMID) {
+        let path = HSTRING::from(format!("shell:AppsFolder\\{SETTINGS_AUMID}"));
+        // SAFETY: COM is initialised; the path is a valid wide string for the call.
+        let item: windows::core::Result<IShellItem> =
+            unsafe { SHCreateItemFromParsingName(&path, None) };
+        match item {
+            Ok(item) => apps.extend(to_app(&item, icon_dir).map(|app| App {
+                parsing_name: SETTINGS_AUMID.to_owned(),
+                ..app
+            })),
+            Err(err) => log::debug!("Windows Settings not found: {err}"),
+        }
+    }
+
     apps.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(apps)
+}
+
+fn to_app(item: &IShellItem, icon_dir: &Path) -> Option<App> {
+    let name = display_name(item, SIGDN_NORMALDISPLAY)?;
+    let parsing_name = display_name(item, SIGDN_PARENTRELATIVEPARSING)?;
+    // Web links pinned to Start are not apps; uninstallers only clutter the results.
+    if name.trim().is_empty() || parsing_name.starts_with("http") || is_uninstaller(&name) {
+        return None;
+    }
+    let icon = icon_path(icon_dir, &parsing_name);
+    let icon = (icon.exists() || save_icon(item, &icon).is_ok()).then_some(icon);
+    Some(App {
+        name,
+        parsing_name,
+        icon,
+    })
+}
+
+fn is_uninstaller(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    ["uninstall", "деинсталл", "удалить ", "удаление "]
+        .iter()
+        .any(|word| lower.starts_with(word))
 }
 
 fn display_name(item: &IShellItem, kind: SIGDN) -> Option<String> {
@@ -164,4 +185,18 @@ fn read_bitmap(bitmap: HBITMAP) -> Option<(u32, u32, Vec<u8>)> {
         }
     }
     Some((width as u32, height as u32, buffer))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_uninstaller;
+
+    #[test]
+    fn recognises_uninstallers() {
+        assert!(is_uninstaller("Деинсталлировать Telegram"));
+        assert!(is_uninstaller("Uninstall Foo"));
+        assert!(is_uninstaller("Удалить Bar"));
+        assert!(!is_uninstaller("Telegram"));
+        assert!(!is_uninstaller("Удалёнка"));
+    }
 }
