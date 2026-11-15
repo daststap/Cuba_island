@@ -5,6 +5,7 @@
  */
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { useIslandStore } from "../app/store";
+import { useIndicatorsStore } from "../features/indicators/store";
 import type {
   ClipItem,
   LaunchResult,
@@ -26,6 +27,7 @@ export const SCENES = [
   "notes",
   "picker",
   "timer",
+  "caps",
 ] as const;
 export type Scene = (typeof SCENES)[number];
 
@@ -59,6 +61,8 @@ const SETTINGS: Settings = {
   launcherHotkey: "Alt+Space",
   historyLimit: 500,
   copyPeek: true,
+  privacyDots: true,
+  capsPeek: true,
   opacity: 1,
   onboarded: true,
 };
@@ -224,6 +228,14 @@ export async function setupDemo(scene: Scene): Promise<void> {
           return scene === "notes" || scene === "timer"
             ? { durationMs: 1_500_000, endsAt: Date.now() + 1_122_000, pausedRemainingMs: null }
             : { durationMs: 0, endsAt: null, pausedRemainingMs: null };
+        case "indicators_get":
+          return {
+            sensors:
+              scene === "home" || scene === "music"
+                ? { microphone: ["Discord"], camera: [] }
+                : { microphone: [], camera: [] },
+            capsLock: scene === "caps",
+          };
         case "shelf_list":
           return scene === "shelf" ? SHELF : [];
         case "claude_status":
@@ -248,6 +260,10 @@ export async function setupDemo(scene: Scene): Promise<void> {
     case "compact":
     case "music":
     case "timer":
+      break;
+    case "caps":
+      useIndicatorsStore.setState({ capsLock: true });
+      store.setState({ state: { mode: "peek", kind: "caps" } });
       break;
     case "picker":
       store.setState({ state: { mode: "expanded", tab: "notes" }, inputMode: true });

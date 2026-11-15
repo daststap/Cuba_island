@@ -28,6 +28,10 @@ pub struct Settings {
     pub launcher_hotkey: String,
     pub history_limit: u32,
     pub copy_peek: bool,
+    /// Orange/green dots while the microphone/camera is in use.
+    pub privacy_dots: bool,
+    /// A short peek when Caps Lock is toggled.
+    pub caps_peek: bool,
     /// Island background opacity, 0.5–1.
     pub opacity: f64,
     /// The first-run autostart question has been answered.
@@ -45,6 +49,8 @@ impl Default for Settings {
             launcher_hotkey: hotkeys::DEFAULT_LAUNCHER.to_owned(),
             history_limit: 500,
             copy_peek: true,
+            privacy_dots: true,
+            caps_peek: true,
             opacity: 1.0,
             onboarded: false,
         }

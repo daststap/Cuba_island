@@ -307,6 +307,20 @@ function SettingsForm({ settings }: { settings: Settings }) {
           set({ copyPeek });
         }}
       />
+      <Toggle
+        label={ru.settings.privacyDots}
+        checked={settings.privacyDots}
+        onChange={(privacyDots) => {
+          set({ privacyDots });
+        }}
+      />
+      <Toggle
+        label={ru.settings.capsPeek}
+        checked={settings.capsPeek}
+        onChange={(capsPeek) => {
+          set({ capsPeek });
+        }}
+      />
       <Row label={ru.settings.opacity}>
         <input
           type="range"
