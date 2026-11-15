@@ -281,6 +281,13 @@ function SettingsForm({ settings }: { settings: Settings }) {
           set({ launcherHotkey });
         }}
       />
+      <HotkeyField
+        label={ru.settings.screenshotHotkey}
+        value={settings.screenshotHotkey}
+        onChange={(screenshotHotkey) => {
+          set({ screenshotHotkey });
+        }}
+      />
       <Row label={ru.settings.historyLimit}>
         <select
           aria-label={ru.settings.historyLimit}

@@ -58,6 +58,17 @@ impl ClipboardShared {
         Ok(self.item(&clip))
     }
 
+    /// Stores an RGBA image (saving its PNG once per content) as a new clip.
+    fn insert_image(&self, width: u32, height: u32, rgba: Vec<u8>) -> AppResult<ClipItem> {
+        let hash = store::content_hash(ClipKind::Image, &rgba);
+        let stem = hash.rsplit(':').next().unwrap_or("image").to_owned();
+        let name = format!("{stem}.png");
+        if !self.dir.join(&name).exists() {
+            images::save(&self.dir, &stem, width, height, rgba)?;
+        }
+        self.insert(NewClip::Image { path: &name }, &hash)
+    }
+
     fn get(&self, id: i64) -> AppResult<Clip> {
         store::get(&self.db(), id)?
             .ok_or_else(|| AppError::InvalidArgument(format!("записи {id} нет в истории")))
@@ -120,6 +131,27 @@ pub fn start(app: &AppHandle, db: Db, limit: usize) -> AppResult<()> {
                 log::error!("clipboard listener stopped: {err}");
             }
         });
+    }
+    Ok(())
+}
+
+/// Puts an RGBA image on the system clipboard and into the history (the listener
+/// skips our own writes), announcing it like any other copy.
+pub fn copy_image(app: &AppHandle, width: u32, height: u32, rgba: Vec<u8>) -> AppResult<()> {
+    use tauri::Emitter;
+
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|err| AppError::Internal(err.to_string()))?;
+    clipboard
+        .set_image(arboard::ImageData {
+            width: width as usize,
+            height: height as usize,
+            bytes: (&rgba[..]).into(),
+        })
+        .map_err(|err| AppError::Internal(format!("не удалось записать в буфер: {err}")))?;
+    let item = app.state::<Shared>().insert_image(width, height, rgba)?;
+    if let Err(err) = app.emit("clipboard://added", item) {
+        log::warn!("failed to emit clipboard://added: {err}");
     }
     Ok(())
 }

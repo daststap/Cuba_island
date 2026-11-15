@@ -28,6 +28,7 @@ export const SCENES = [
   "picker",
   "timer",
   "caps",
+  "snip",
 ] as const;
 export type Scene = (typeof SCENES)[number];
 
@@ -59,6 +60,7 @@ const SETTINGS: Settings = {
   hour12: false,
   clipboardHotkey: "Ctrl+Alt+V",
   launcherHotkey: "Alt+Space",
+  screenshotHotkey: "Ctrl+Alt+S",
   historyLimit: 500,
   copyPeek: true,
   privacyDots: true,
@@ -190,6 +192,45 @@ const LAUNCH: LaunchResult[] = [
   { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
 ];
 
+/** A fake desktop for the screenshot overlay demo (`?demo=snip&snip`). */
+function fakeDesktop(): ArrayBuffer {
+  const width = Math.round(window.innerWidth * window.devicePixelRatio);
+  const height = Math.round(window.innerHeight * window.devicePixelRatio);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const sky = ctx.createLinearGradient(0, 0, width, height);
+    sky.addColorStop(0, "#3b3f73");
+    sky.addColorStop(1, "#0e0f1c");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, width, height);
+    const k = window.devicePixelRatio;
+    ctx.fillStyle = "#f5f5f7";
+    ctx.beginPath();
+    ctx.roundRect(120 * k, 90 * k, 560 * k, 340 * k, 12 * k);
+    ctx.fill();
+    ctx.fillStyle = "#1d1d1f";
+    ctx.font = `600 ${String(22 * k)}px Segoe UI`;
+    ctx.fillText("Отчёт за ноябрь", 150 * k, 140 * k);
+    ctx.font = `${String(15 * k)}px Segoe UI`;
+    ["Выручка: 1 240 000 ₽", "Пароль от стенда: hunter2", "Готово 3 из 5 задач"].forEach(
+      (line, i) => {
+        ctx.fillText(line, 150 * k, (185 + i * 34) * k);
+      },
+    );
+  }
+  const rgba =
+    ctx?.getImageData(0, 0, width, height).data ?? new Uint8ClampedArray(width * height * 4);
+  const out = new Uint8Array(8 + rgba.length);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, width, true);
+  view.setUint32(4, height, true);
+  out.set(rgba, 8);
+  return out.buffer;
+}
+
 export async function setupDemo(scene: Scene): Promise<void> {
   const withMusic = scene !== "compact" && scene !== "launcher" && scene !== "clipboard";
   const media: MediaState | null = withMusic
@@ -217,7 +258,12 @@ export async function setupDemo(scene: Scene): Promise<void> {
         case "settings_get":
           return SETTINGS;
         case "hotkeys_status":
-          return { clipboard: "Ctrl+Alt+V", launcher: "Alt+Space", launcherFallback: false };
+          return {
+            clipboard: "Ctrl+Alt+V",
+            launcher: "Alt+Space",
+            screenshot: "Ctrl+Alt+S",
+            launcherFallback: false,
+          };
         case "clipboard_list":
           return CLIPS;
         case "launcher_search":
@@ -242,6 +288,8 @@ export async function setupDemo(scene: Scene): Promise<void> {
           return [];
         case "monitors_list":
           return [];
+        case "screenshot_frame":
+          return fakeDesktop();
         case "update_check":
           return null;
         default:

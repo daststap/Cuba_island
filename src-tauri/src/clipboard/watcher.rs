@@ -3,7 +3,7 @@
 use clipboard_master::{CallbackResult, ClipboardHandler, Master};
 
 use super::store::{self, ClipKind, NewClip, MAX_TEXT_BYTES};
-use super::{images, win32, ClipboardShared};
+use super::{win32, ClipboardShared};
 use crate::error::AppResult;
 
 const SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(75);
@@ -68,15 +68,8 @@ fn record(shared: &ClipboardShared) -> AppResult<Option<store::ClipItem>> {
         if width == 0 || height == 0 {
             return Ok(None);
         }
-        let bytes = image.bytes.into_owned();
-        let hash = store::content_hash(ClipKind::Image, &bytes);
-        let stem = hash.rsplit(':').next().unwrap_or("image").to_owned();
-        let name = format!("{stem}.png");
-        if !shared.dir.join(&name).exists() {
-            images::save(&shared.dir, &stem, width, height, bytes)?;
-        }
         return shared
-            .insert(NewClip::Image { path: &name }, &hash)
+            .insert_image(width, height, image.bytes.into_owned())
             .map(Some);
     }
 

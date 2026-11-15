@@ -8,9 +8,10 @@ mod indicators;
 mod launcher;
 mod media;
 mod notes;
+#[cfg(windows)]
+mod screenshot;
 mod settings;
 mod shelf;
-#[cfg(windows)]
 mod shell;
 mod storage;
 mod system;
@@ -43,6 +44,12 @@ fn log_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Frontend errors go to the log file too (the page console is not visible in releases).
+#[tauri::command]
+fn report_error(context: String, message: String, window: tauri::WebviewWindow) {
+    log::error!("[{}] {context}: {message}", window.label());
+}
+
 pub fn run() {
     let result = tauri::Builder::default()
         // single-instance must be registered first so a second launch exits early.
@@ -59,6 +66,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            report_error,
             window::set_island_rect,
             window::set_input_mode,
             system::get_battery,
@@ -96,6 +104,11 @@ pub fn run() {
             notes::timer_control,
             notes::timer_silence,
             indicators::indicators_get,
+            screenshot::screenshot_start,
+            screenshot::screenshot_frame,
+            screenshot::screenshot_ready,
+            screenshot::screenshot_copy,
+            screenshot::screenshot_close,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
@@ -113,11 +126,8 @@ pub fn run() {
             launcher::start(handle, db.clone())?;
             shelf::start(handle, db.clone())?;
             notes::start(handle, db);
-            hotkeys::register(
-                handle,
-                &settings.clipboard_hotkey,
-                &settings.launcher_hotkey,
-            );
+            screenshot::setup(handle);
+            hotkeys::register(handle, &settings.hotkeys());
             claude::start(handle);
             indicators::start(handle);
             tray::create(handle)?;
