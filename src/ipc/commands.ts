@@ -163,6 +163,10 @@ export interface Settings {
   launcherHotkey: string;
   historyLimit: number;
   copyPeek: boolean;
+  /** Orange/green dots while the microphone/camera is in use. */
+  privacyDots: boolean;
+  /** A short peek when Caps Lock is toggled. */
+  capsPeek: boolean;
   /** 0.5–1 */
   opacity: number;
   onboarded: boolean;
@@ -340,4 +344,20 @@ export function reportError(context: string, error: unknown): void {
   const message = isAppError(error) ? error.message : String(error);
   console.error(`[${context}] ${isAppError(error) ? `${error.kind}: ` : ""}${message}`);
   errorSink?.(message);
+}
+
+/** Mirrors `indicators::Sensors`: apps using each device right now. */
+export interface Sensors {
+  microphone: string[];
+  camera: string[];
+}
+
+/** Mirrors `indicators::Indicators`. */
+export interface Indicators {
+  sensors: Sensors;
+  capsLock: boolean;
+}
+
+export function indicatorsGet(): Promise<Indicators> {
+  return invoke("indicators_get");
 }

@@ -6,6 +6,8 @@ import { ClaudeBadge, ClaudePeek, ClaudeSessions } from "../features/claude/view
 import { ClipboardPeek, ClipboardTab } from "../features/clipboard/ClipboardTab";
 import { useClipboardSync } from "../features/clipboard/store";
 import { Clock, LongDate } from "../features/clock/Clock";
+import { useIndicatorsSync } from "../features/indicators/store";
+import { CapsPeek, PrivacyDots, SensorsLine } from "../features/indicators/views";
 import { LauncherTab } from "../features/launcher/LauncherTab";
 import { useMediaStore, useMediaSync } from "../features/media/store";
 import { useCoverColor } from "../features/media/useCoverColor";
@@ -29,6 +31,7 @@ const SHAPES = {
   compact: { width: 200, height: 36, radius: 18 },
   peek: { width: 360, height: 68, radius: 28 },
   clipboardPeek: { width: 320, height: 44, radius: 22 },
+  capsPeek: { width: 260, height: 44, radius: 22 },
   toastPeek: { width: 440, height: 44, radius: 22 },
   claudePeek: { width: 420, height: 56, radius: 28 },
   expanded: { width: 640, height: 360, radius: 32 },
@@ -49,6 +52,7 @@ export function Island() {
   useClaudeSync();
   useShelfSync();
   useNotesSync();
+  useIndicatorsSync();
   useSettingsSync(announceUpdate);
   const state = useIslandStore((s) => s.state);
   const dispatch = useIslandStore((s) => s.dispatch);
@@ -76,11 +80,13 @@ export function Island() {
       : mode === "peek"
         ? peekKind === "clipboard"
           ? SHAPES.clipboardPeek
-          : peekKind === "toast"
-            ? SHAPES.toastPeek
-            : peekKind === "claude" || peekKind === "alert"
-              ? SHAPES.claudePeek
-              : SHAPES.peek
+          : peekKind === "caps"
+            ? SHAPES.capsPeek
+            : peekKind === "toast"
+              ? SHAPES.toastPeek
+              : peekKind === "claude" || peekKind === "alert"
+                ? SHAPES.claudePeek
+                : SHAPES.peek
         : SHAPES.compact;
   const glowAlpha = media?.isPlaying ? 0.55 : 0.3;
   const shadow = glow
@@ -114,6 +120,8 @@ export function Island() {
     content = <ClaudePeek />;
   } else if (mode === "peek" && peekKind === "alert") {
     content = <AlertPeek />;
+  } else if (mode === "peek" && peekKind === "caps") {
+    content = <CapsPeek />;
   } else if (mode === "peek" && peekKind === "clipboard") {
     content = <ClipboardPeek />;
   } else if (mode === "peek" && media) {
@@ -192,6 +200,7 @@ function CompactView({ mode, media }: { mode: IslandState["mode"]; media: MediaS
         <ClaudeBadge />
         <ShelfBadge />
       </div>
+      <PrivacyDots />
     </div>
   );
 }
@@ -248,7 +257,8 @@ function ExpandedView({
         {player ? (
           <>
             <MediaPlayer media={media} />
-            <div className="mt-3 w-full">
+            <div className="mt-3 flex w-full flex-col gap-2">
+              <SensorsLine />
               <ClaudeSessions />
             </div>
           </>
@@ -267,7 +277,8 @@ function ExpandedView({
             <div className="mt-5 text-sm text-[var(--island-muted)]">
               <BatteryIndicator />
             </div>
-            <div className="mt-4 w-full">
+            <div className="mt-4 flex w-full flex-col gap-3">
+              <SensorsLine />
               <ClaudeSessions />
             </div>
           </>

@@ -9,6 +9,7 @@ import type {
   ClipItem,
   MediaState,
   Note,
+  Sensors,
   Settings,
   TimerState,
 } from "./commands";
@@ -40,6 +41,8 @@ interface EventMap {
   "notes://reminder": Note;
   "notes://timer": TimerState;
   "notes://timer-done": null;
+  "indicators://sensors": Sensors;
+  "indicators://caps-lock": boolean;
 }
 
 function subscribe<K extends keyof EventMap>(
@@ -105,3 +108,9 @@ export const onTimer = (handler: (state: TimerState) => void) =>
   subscribe("notes://timer", handler);
 
 export const onTimerDone = (handler: () => void) => subscribe("notes://timer-done", handler);
+
+export const onSensors = (handler: (sensors: Sensors) => void) =>
+  subscribe("indicators://sensors", handler);
+
+export const onCapsLock = (handler: (on: boolean) => void) =>
+  subscribe("indicators://caps-lock", handler);

@@ -7,6 +7,7 @@ import { ru } from "../i18n/ru";
 import { useSettingsStore } from "../features/settings/store";
 import { useClaudeStore } from "../features/claude/store";
 import { SHELF_DROP_MESSAGE, useShelfStore } from "../features/shelf/store";
+import { NO_SENSORS, useIndicatorsStore } from "../features/indicators/store";
 import { DEFAULT_PICKED_MS, IDLE_TIMER, useNotesStore } from "../features/notes/store";
 import type {
   Note,
@@ -77,6 +78,8 @@ const DEFAULT_SETTINGS: Settings = {
   launcherHotkey: "Alt+Space",
   historyLimit: 500,
   copyPeek: true,
+  privacyDots: true,
+  capsPeek: true,
   opacity: 1,
   onboarded: true,
 };
@@ -131,6 +134,7 @@ describe("Island", () => {
       pickedMs: DEFAULT_PICKED_MS,
     });
     useShelfStore.setState({ items: [], dragging: false });
+    useIndicatorsStore.setState({ sensors: NO_SENSORS, capsLock: false });
     hooksInstalled = false;
     useClaudeStore.setState({ sessions: [], attention: null });
     useSettingsStore.setState({ settings: null, update: null });
@@ -163,6 +167,7 @@ describe("Island", () => {
           return { durationMs, endsAt: Date.now() + durationMs, pausedRemainingMs: null };
         }
         if (cmd === "shelf_drag_out") return true;
+        if (cmd === "indicators_get") return { sensors: NO_SENSORS, capsLock: false };
         if (cmd === "claude_hooks_status" || cmd === "claude_hooks_set") {
           hooksInstalled =
             cmd === "claude_hooks_set" ? (args as { enabled: boolean }).enabled : hooksInstalled;
@@ -792,6 +797,70 @@ describe("Island", () => {
       await vi.waitFor(() => {
         expect(calls.some((c) => c.cmd === "timer_silence")).toBe(true);
       });
+    });
+  });
+
+  describe("indicators", () => {
+    const discord = { microphone: ["Discord"], camera: ["Discord"] };
+    const dotsName = `${ru.indicators.usedBy(ru.indicators.microphone, ["Discord"])}; ${ru.indicators.usedBy(ru.indicators.camera, ["Discord"])}`;
+
+    /** Lets the initial `indicators_get` land before events arrive. */
+    const settled = () =>
+      act(async () => {
+        await vi.waitFor(() => {
+          expect(calls.some((c) => c.cmd === "indicators_get")).toBe(true);
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+    it("shows privacy dots in the pill and who listens on the home tab", async () => {
+      render(<Island />);
+      await settled();
+      await act(async () => {
+        await emit("indicators://sensors", discord);
+      });
+      expect(screen.getByRole("img", { name: dotsName })).toBeInTheDocument();
+      act(() => {
+        useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
+      });
+      expect(screen.getByRole("list", { name: ru.indicators.inUse })).toHaveTextContent(
+        ru.indicators.usedBy(ru.indicators.microphone, ["Discord"]),
+      );
+    });
+
+    it("hides the dots when turned off in settings", async () => {
+      settings = { ...DEFAULT_SETTINGS, privacyDots: false };
+      render(<Island />);
+      await vi.waitFor(() => {
+        expect(useSettingsStore.getState().settings?.privacyDots).toBe(false);
+      });
+      await act(async () => {
+        await emit("indicators://sensors", discord);
+      });
+      expect(screen.queryByRole("img", { name: dotsName })).not.toBeInTheDocument();
+    });
+
+    it("peeks when Caps Lock is toggled", async () => {
+      render(<Island />);
+      await settled();
+      await act(async () => {
+        await emit("indicators://caps-lock", true);
+      });
+      expect(useIslandStore.getState().state).toEqual({ mode: "peek", kind: "caps" });
+      expect(screen.getByText(ru.indicators.capsLock)).toBeInTheDocument();
+      expect(screen.getByText(ru.indicators.on)).toBeInTheDocument();
+    });
+
+    it("does not interrupt an open panel or a disabled Caps Lock peek", async () => {
+      settings = { ...DEFAULT_SETTINGS, capsPeek: false };
+      render(<Island />);
+      await vi.waitFor(() => {
+        expect(useSettingsStore.getState().settings?.capsPeek).toBe(false);
+      });
+      await act(async () => {
+        await emit("indicators://caps-lock", true);
+      });
+      expect(useIslandStore.getState().state.mode).toBe("compact");
     });
   });
 });
