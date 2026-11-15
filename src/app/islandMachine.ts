@@ -2,12 +2,15 @@
  * Island states and transitions (PLAN.md §4.6). Pure: no timers, no IPC.
  */
 
-export type Tab = "home" | "shelf" | "clipboard" | "launcher" | "settings";
+export type Tab = "home" | "notes" | "shelf" | "clipboard" | "launcher" | "settings";
 
-export const TABS: readonly Tab[] = ["home", "shelf", "clipboard", "launcher", "settings"];
+export const TABS: readonly Tab[] = ["home", "notes", "shelf", "clipboard", "launcher", "settings"];
 
-/** What a peek is about: a track change, a fresh copy, a message or Claude Code waiting. */
-export type PeekKind = "media" | "clipboard" | "toast" | "claude";
+/**
+ * What a peek is about: a track change, a fresh copy, a message, Claude Code waiting,
+ * or an alert (reminder due / timer done) that stays until the user reacts.
+ */
+export type PeekKind = "media" | "clipboard" | "toast" | "claude" | "alert";
 
 export type IslandState =
   | { mode: "hidden" }
@@ -37,7 +40,11 @@ export function islandReducer(state: IslandState, event: IslandEvent): IslandSta
       if (state.mode === "expanded") {
         return event.tab && event.tab !== state.tab ? { mode: "expanded", tab: event.tab } : state;
       }
-      return { mode: "expanded", tab: event.tab ?? "home" };
+      // Opening an alert peek leads to the notes and timer it is about.
+      return {
+        mode: "expanded",
+        tab: event.tab ?? (state.mode === "peek" && state.kind === "alert" ? "notes" : "home"),
+      };
     case "collapse":
       return state.mode === "expanded" || state.mode === "peek" ? { mode: "compact" } : state;
     case "selectTab":

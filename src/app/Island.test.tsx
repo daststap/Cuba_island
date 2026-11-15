@@ -7,7 +7,9 @@ import { ru } from "../i18n/ru";
 import { useSettingsStore } from "../features/settings/store";
 import { useClaudeStore } from "../features/claude/store";
 import { SHELF_DROP_MESSAGE, useShelfStore } from "../features/shelf/store";
+import { DEFAULT_PICKED_MS, IDLE_TIMER, useNotesStore } from "../features/notes/store";
 import type {
+  Note,
   ShelfItem,
   ClaudeSession,
   ClipItem,
@@ -104,6 +106,7 @@ const SHELF: ShelfItem[] = [
   },
 ];
 let shelfItems: ShelfItem[] = [];
+let notes: Note[] = [];
 let hooksInstalled = false;
 let hotkeys = DEFAULT_HOTKEYS;
 let launcherResults = RESULTS;
@@ -120,6 +123,13 @@ describe("Island", () => {
     settings = DEFAULT_SETTINGS;
     claudeSessions = [];
     shelfItems = [];
+    notes = [];
+    useNotesStore.setState({
+      notes: [],
+      timer: IDLE_TIMER,
+      alert: null,
+      pickedMs: DEFAULT_PICKED_MS,
+    });
     useShelfStore.setState({ items: [], dragging: false });
     hooksInstalled = false;
     useClaudeStore.setState({ sessions: [], attention: null });
@@ -145,6 +155,13 @@ describe("Island", () => {
         if (cmd === "monitors_list") return [];
         if (cmd === "claude_status") return claudeSessions;
         if (cmd === "shelf_list") return shelfItems;
+        if (cmd === "notes_list") return notes;
+        if (cmd === "notes_add") return { id: 1, ...(args as object) };
+        if (cmd === "timer_get" || cmd === "timer_control") return IDLE_TIMER;
+        if (cmd === "timer_start") {
+          const durationMs = (args as { durationMs: number }).durationMs;
+          return { durationMs, endsAt: Date.now() + durationMs, pausedRemainingMs: null };
+        }
         if (cmd === "shelf_drag_out") return true;
         if (cmd === "claude_hooks_status" || cmd === "claude_hooks_set") {
           hooksInstalled =
@@ -649,6 +666,132 @@ describe("Island", () => {
         window.dispatchEvent(over);
       });
       expect(over.defaultPrevented).toBe(true);
+    });
+  });
+
+  describe("notes and timer", () => {
+    const note = (overrides: Partial<Note> = {}): Note => ({
+      id: 3,
+      text: "позвонить маме в 18:30",
+      remindAt: null,
+      reminded: false,
+      done: false,
+      createdAt: Date.now(),
+      ...overrides,
+    });
+
+    const openNotes = () => {
+      useIslandStore.setState({ state: { mode: "expanded", tab: "notes" } });
+      render(<Island />);
+    };
+
+    it("adds a note with the reminder time parsed from its text", async () => {
+      openNotes();
+      const input = await screen.findByRole("textbox", { name: ru.notes.new });
+      fireEvent.change(input, { target: { value: "чай через 15 мин" } });
+      expect(screen.getByText(/напомню/)).toBeInTheDocument();
+      const before = Date.now();
+      fireEvent.keyDown(input, { key: "Enter" });
+      await vi.waitFor(() => {
+        const add = calls.find((c) => c.cmd === "notes_add");
+        expect(add).toBeDefined();
+        const args = add?.args as { text: string; remindAt: number };
+        expect(args.text).toBe("чай через 15 мин");
+        expect(args.remindAt - before).toBeGreaterThanOrEqual(15 * 60_000 - 1000);
+        expect(args.remindAt - before).toBeLessThanOrEqual(15 * 60_000 + 1000);
+      });
+    });
+
+    it("adds a plain note without a reminder", async () => {
+      openNotes();
+      const input = await screen.findByRole("textbox", { name: ru.notes.new });
+      fireEvent.change(input, { target: { value: "купить молоко" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "notes_add",
+          args: { text: "купить молоко", remindAt: null },
+        });
+      });
+    });
+
+    it("lists notes, ticks them off and deletes them", async () => {
+      notes = [note({ remindAt: Date.now() + 3_600_000 })];
+      openNotes();
+      expect(await screen.findByText("в 18:30")).toBeInTheDocument();
+      fireEvent.click(
+        screen.getByRole("checkbox", { name: ru.notes.markDone(notes[0]?.text ?? "") }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: ru.notes.delete(notes[0]?.text ?? "") }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "notes_set_done", args: { id: 3, done: true } });
+        expect(calls).toContainEqual({ cmd: "notes_delete", args: { id: 3 } });
+      });
+    });
+
+    it("keeps a reminder peek until it is dismissed", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      render(<Island />);
+      await act(async () => {
+        await emit("notes://reminder", note({ text: "Выпить чай", reminded: true }));
+      });
+      expect(useIslandStore.getState().state).toEqual({ mode: "peek", kind: "alert" });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent("Выпить чай");
+      fireEvent.click(alert);
+      expect(useIslandStore.getState().state.mode).toBe("compact");
+      expect(useNotesStore.getState().alert).toBeNull();
+    });
+
+    it("sets the timer on the wheels and starts it", async () => {
+      openNotes();
+      const minutes = await screen.findByRole("spinbutton", { name: ru.notes.minutes });
+      expect(minutes).toHaveAttribute("aria-valuenow", "5");
+      fireEvent.keyDown(minutes, { key: "ArrowUp" });
+      fireEvent.keyDown(screen.getByRole("spinbutton", { name: ru.notes.seconds }), {
+        key: "End",
+      });
+      expect(screen.getByRole("button", { name: ru.notes.cancel })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: ru.notes.start }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "timer_start", args: { durationMs: 419_000 } });
+      });
+    });
+
+    it("counts down in a ring and in the pill", async () => {
+      openNotes();
+      await screen.findAllByRole("spinbutton");
+      act(() => {
+        useNotesStore.setState({
+          timer: { durationMs: 600_000, endsAt: Date.now() + 300_000, pausedRemainingMs: null },
+        });
+      });
+      expect(await screen.findByRole("timer", { name: ru.notes.left })).toHaveTextContent("5:00");
+      expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: ru.notes.pause }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "timer_control", args: { action: "pause" } });
+      });
+      act(() => {
+        useIslandStore.setState({ state: { mode: "compact" } });
+      });
+      expect(await screen.findByRole("timer", { name: ru.notes.timer })).toHaveTextContent("5:00");
+    });
+
+    it("announces a finished timer and silences it on click", async () => {
+      render(<Island />);
+      await act(async () => {
+        await emit("notes://timer-done");
+      });
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(ru.notes.timerDone);
+      fireEvent.click(alert);
+      await vi.waitFor(() => {
+        expect(calls.some((c) => c.cmd === "timer_silence")).toBe(true);
+      });
     });
   });
 });

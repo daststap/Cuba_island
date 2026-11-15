@@ -5,7 +5,14 @@
  */
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { useIslandStore } from "../app/store";
-import type { ClipItem, LaunchResult, MediaState, Settings, ShelfItem } from "../ipc/commands";
+import type {
+  ClipItem,
+  LaunchResult,
+  MediaState,
+  Note,
+  Settings,
+  ShelfItem,
+} from "../ipc/commands";
 
 export const SCENES = [
   "compact",
@@ -16,6 +23,9 @@ export const SCENES = [
   "launcher",
   "settings",
   "shelf",
+  "notes",
+  "picker",
+  "timer",
 ] as const;
 export type Scene = (typeof SCENES)[number];
 
@@ -136,6 +146,41 @@ const SHELF: ShelfItem[] = [
   },
 ];
 
+const NOTES: Note[] = [
+  {
+    id: 1,
+    text: "Позвонить маме в 18:30",
+    remindAt: new Date().setHours(18, 30, 0, 0),
+    reminded: false,
+    done: false,
+    createdAt: minutesAgo(30),
+  },
+  {
+    id: 2,
+    text: "Отправить отчёт завтра в 10",
+    remindAt: new Date(Date.now() + 86_400_000).setHours(10, 0, 0, 0),
+    reminded: false,
+    done: false,
+    createdAt: minutesAgo(60),
+  },
+  {
+    id: 3,
+    text: "Купить кофе и молоко",
+    remindAt: null,
+    reminded: false,
+    done: false,
+    createdAt: minutesAgo(120),
+  },
+  {
+    id: 4,
+    text: "Обновить README",
+    remindAt: null,
+    reminded: false,
+    done: true,
+    createdAt: minutesAgo(240),
+  },
+];
+
 const LAUNCH: LaunchResult[] = [
   { id: "calc:6", kind: "calc", title: "6", iconPath: null },
   { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
@@ -173,6 +218,12 @@ export async function setupDemo(scene: Scene): Promise<void> {
           return CLIPS;
         case "launcher_search":
           return LAUNCH;
+        case "notes_list":
+          return scene === "notes" || scene === "picker" ? NOTES : [];
+        case "timer_get":
+          return scene === "notes" || scene === "timer"
+            ? { durationMs: 1_500_000, endsAt: Date.now() + 1_122_000, pausedRemainingMs: null }
+            : { durationMs: 0, endsAt: null, pausedRemainingMs: null };
         case "shelf_list":
           return scene === "shelf" ? SHELF : [];
         case "claude_status":
@@ -196,6 +247,10 @@ export async function setupDemo(scene: Scene): Promise<void> {
   switch (scene) {
     case "compact":
     case "music":
+    case "timer":
+      break;
+    case "picker":
+      store.setState({ state: { mode: "expanded", tab: "notes" }, inputMode: true });
       break;
     case "peek":
       store.setState({ state: { mode: "peek", kind: "media" } });
@@ -207,6 +262,7 @@ export async function setupDemo(scene: Scene): Promise<void> {
     case "launcher":
     case "settings":
     case "shelf":
+    case "notes":
       store.setState({ state: { mode: "expanded", tab: scene }, inputMode: true });
       break;
   }

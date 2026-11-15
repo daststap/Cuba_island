@@ -45,6 +45,11 @@ describe("islandReducer", () => {
     });
   });
 
+  it("opens the notes tab from an alert peek", () => {
+    const alert: IslandState = { mode: "peek", kind: "alert" };
+    expect(islandReducer(alert, { type: "expand" })).toEqual({ mode: "expanded", tab: "notes" });
+  });
+
   it("expands from a peek, and endPeek does not close the panel", () => {
     const peek: IslandState = { mode: "peek", kind: "media" };
     const expanded = islandReducer(peek, { type: "expand" });

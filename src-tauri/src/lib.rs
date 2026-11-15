@@ -6,6 +6,7 @@ pub mod error;
 mod hotkeys;
 mod launcher;
 mod media;
+mod notes;
 mod settings;
 mod shelf;
 #[cfg(windows)]
@@ -85,6 +86,14 @@ pub fn run() {
             shelf::shelf_clear,
             shelf::shelf_open,
             shelf::shelf_drag_out,
+            notes::notes_list,
+            notes::notes_add,
+            notes::notes_set_done,
+            notes::notes_delete,
+            notes::timer_get,
+            notes::timer_start,
+            notes::timer_control,
+            notes::timer_silence,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
@@ -100,7 +109,8 @@ pub fn run() {
             let db = storage::init(handle)?;
             clipboard::start(handle, db.clone(), settings.history_limit as usize)?;
             launcher::start(handle, db.clone())?;
-            shelf::start(handle, db)?;
+            shelf::start(handle, db.clone())?;
+            notes::start(handle, db);
             hotkeys::register(
                 handle,
                 &settings.clipboard_hotkey,
