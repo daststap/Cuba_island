@@ -1,15 +1,19 @@
 //! Microphone / camera in use (iPhone-style privacy dots) and Caps Lock
 //! (PLAN.md stage 6).
 //!
-//! Windows records every app's use of the microphone and camera under
-//! `HKCU\…\CapabilityAccessManager\ConsentStore\{microphone,webcam}`: an app is
-//! using the device while its `LastUsedTimeStop` is 0. The keys are watched with
-//! `RegNotifyChangeKeyValue`, so nothing is polled. Caps Lock has no change
-//! notification without a keyboard hook, so its toggle bit is read every 100 ms.
+//! The registry's `CapabilityAccessManager\ConsentStore` is no longer updated
+//! live on current Windows 11 builds (usage moved into a database only SYSTEM can
+//! read), so the public APIs are used instead:
+//! - microphone: active WASAPI capture sessions on every input device, read once
+//!   a second (a handful of COM calls);
+//! - camera: Media Foundation's `IMFSensorActivityMonitor`, which reports the
+//!   processes streaming from a camera;
+//! - Caps Lock: its toggle bit, read every 100 ms (no keyboard hook).
 
 #[cfg(windows)]
 mod win32;
 
+use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -19,8 +23,7 @@ use crate::error::AppResult;
 use crate::thread::spawn_supervised;
 
 const CAPS_POLL: Duration = Duration::from_millis(100);
-/// Several values change at once when an app grabs a device; wait for them all.
-const SETTLE: Duration = Duration::from_millis(150);
+const SENSORS_POLL: Duration = Duration::from_secs(1);
 
 /// Apps using the microphone and the camera right now. Mirrored in `src/ipc/commands.ts`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
@@ -30,52 +33,28 @@ pub struct Sensors {
     pub camera: Vec<String>,
 }
 
-/// A device is in use while it has a start time and no stop time yet.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn in_use(start: Option<u64>, stop: Option<u64>) -> bool {
-    start.unwrap_or(0) != 0 && stop.unwrap_or(0) == 0
-}
+/// Last state seen by the watcher, for `indicators_get`.
+static CURRENT: Mutex<Sensors> = Mutex::new(Sensors {
+    microphone: Vec::new(),
+    camera: Vec::new(),
+});
 
-/// Readable name for a consent-store key:
-/// `C:#Program Files#Discord#Discord.exe` → `Discord`,
-/// `Microsoft.WindowsCamera_8wekyb3d8bbwe` → `WindowsCamera`.
+/// `C:\Users\me\AppData\Local\Discord\app-1.0.9\Discord.exe` → `Discord`.
 #[cfg_attr(not(windows), allow(dead_code))]
-fn app_name(key: &str, packaged: bool) -> String {
-    if packaged {
-        let family = key.split('_').next().unwrap_or(key);
-        family.rsplit('.').next().unwrap_or(family).to_owned()
-    } else {
-        let file = key.rsplit('#').next().unwrap_or(key);
-        let stem = file.rsplit_once('.').map_or(file, |(stem, ext)| {
-            if ext.eq_ignore_ascii_case("exe") {
-                stem
-            } else {
-                file
-            }
-        });
-        stem.to_owned()
+fn exe_name(path: &str) -> String {
+    let file = path.rsplit(['\\', '/']).next().unwrap_or(path);
+    match file.rsplit_once('.') {
+        Some((stem, ext)) if ext.eq_ignore_ascii_case("exe") && !stem.is_empty() => stem.to_owned(),
+        _ => file.to_owned(),
     }
 }
 
-/// Sorted, without duplicates (one app can have several keys, one per version).
+/// Sorted, without duplicates (apps like Discord or browsers run many processes).
 #[cfg_attr(not(windows), allow(dead_code))]
 fn tidy(mut names: Vec<String>) -> Vec<String> {
     names.sort_by_key(|n| n.to_lowercase());
     names.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
     names
-}
-
-#[cfg(windows)]
-fn read_sensors() -> Sensors {
-    Sensors {
-        microphone: win32::apps_using("microphone"),
-        camera: win32::apps_using("webcam"),
-    }
-}
-
-#[cfg(not(windows))]
-fn read_sensors() -> Sensors {
-    Sensors::default()
 }
 
 #[cfg(windows)]
@@ -99,7 +78,10 @@ pub struct Indicators {
 #[tauri::command]
 pub fn indicators_get() -> AppResult<Indicators> {
     Ok(Indicators {
-        sensors: read_sensors(),
+        sensors: CURRENT
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone(),
         caps_lock: caps_lock_on(),
     })
 }
@@ -110,30 +92,72 @@ fn emit<P: Serialize + Clone>(app: &AppHandle, event: &str, payload: P) {
     }
 }
 
+/// Publishes `now` if it differs from what was last seen.
+fn publish(app: &AppHandle, now: Sensors) {
+    let mut current = CURRENT.lock().unwrap_or_else(PoisonError::into_inner);
+    if *current == now {
+        return;
+    }
+    log::info!(
+        "sensors in use: microphone {:?}, camera {:?}",
+        now.microphone,
+        now.camera
+    );
+    *current = now.clone();
+    drop(current);
+    emit(app, "indicators://sensors", now);
+}
+
+#[cfg(windows)]
+fn watch_sensors(app: &AppHandle) {
+    use std::collections::BTreeSet;
+    use std::sync::Arc;
+
+    win32::init_thread();
+    let camera_pids: win32::CameraPids = Arc::new(Mutex::new(BTreeSet::new()));
+    // Kept alive for as long as the loop runs.
+    let _monitor = match win32::CameraMonitor::start(camera_pids.clone()) {
+        Ok(monitor) => Some(monitor),
+        Err(err) => {
+            log::warn!("camera activity monitor unavailable: {err}");
+            None
+        }
+    };
+    let names = |pids: &BTreeSet<u32>| {
+        tidy(
+            pids.iter()
+                .filter_map(|&pid| win32::process_name(pid))
+                .collect(),
+        )
+    };
+    loop {
+        let microphone = win32::microphone_pids().unwrap_or_else(|err| {
+            log::debug!("failed to read capture sessions: {err}");
+            BTreeSet::new()
+        });
+        let camera = camera_pids
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        publish(
+            app,
+            Sensors {
+                microphone: names(&microphone),
+                camera: names(&camera),
+            },
+        );
+        std::thread::sleep(SENSORS_POLL);
+    }
+}
+
 /// Starts the watchers: `indicators://sensors` and `indicators://caps-lock`.
 pub fn start(app: &AppHandle) {
     let sensors_app = app.clone();
     spawn_supervised("indicators-sensors", move || {
-        let mut last = read_sensors();
-        let mut on_change = || {
-            std::thread::sleep(SETTLE);
-            let now = read_sensors();
-            if now != last {
-                log::info!(
-                    "sensors in use: microphone {:?}, camera {:?}",
-                    now.microphone,
-                    now.camera
-                );
-                last = now.clone();
-                emit(&sensors_app, "indicators://sensors", now);
-            }
-        };
         #[cfg(windows)]
-        win32::watch_consent_store(&mut on_change);
+        watch_sensors(&sensors_app);
         #[cfg(not(windows))]
-        {
-            let _ = &mut on_change;
-        }
+        publish(&sensors_app, Sensors::default());
     });
 
     let caps_app = app.clone();
@@ -155,34 +179,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn in_use_until_stopped() {
-        assert!(in_use(Some(134_000), Some(0)));
-        assert!(in_use(Some(134_000), None));
-        assert!(!in_use(Some(134_000), Some(134_500)));
-        assert!(!in_use(None, None));
-        assert!(!in_use(Some(0), Some(0)));
-    }
-
-    #[test]
-    fn names_desktop_apps_by_exe() {
+    fn names_apps_by_exe() {
         assert_eq!(
-            app_name(
-                r"C:#Users#me#AppData#Local#Discord#app-1.0.9#Discord.exe",
-                false
-            ),
+            exe_name(r"C:\Users\me\AppData\Local\Discord\app-1.0.9\Discord.exe"),
             "Discord"
         );
-        assert_eq!(app_name("C:#Tools#obs64.EXE", false), "obs64");
-        assert_eq!(app_name("weird", false), "weird");
-    }
-
-    #[test]
-    fn names_store_apps_by_package() {
+        assert_eq!(exe_name(r"C:\Tools\obs64.EXE"), "obs64");
         assert_eq!(
-            app_name("Microsoft.WindowsCamera_8wekyb3d8bbwe", true),
+            exe_name(r"C:\Program Files\WindowsApps\Microsoft.WindowsCamera\WindowsCamera.exe"),
             "WindowsCamera"
         );
-        assert_eq!(app_name("Claude_pzs8sxrjxfjjc", true), "Claude");
+        assert_eq!(exe_name("weird"), "weird");
     }
 
     #[test]

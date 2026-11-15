@@ -1,191 +1,163 @@
-//! Registry and keyboard access for the indicators.
+//! Who is using the microphone (WASAPI capture sessions) and the camera
+//! (Media Foundation sensor activity monitor), and the Caps Lock state.
 
-use std::time::Duration;
+use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex, PoisonError};
 
-use windows::core::{HSTRING, PCWSTR, PWSTR};
-use windows::Win32::Foundation::{CloseHandle, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS, HANDLE};
-use windows::Win32::System::Registry::{
-    RegCloseKey, RegEnumKeyExW, RegGetValueW, RegNotifyChangeKeyValue, RegOpenKeyExW, HKEY,
-    HKEY_CURRENT_USER, KEY_NOTIFY, KEY_READ, REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_CHANGE_NAME,
-    RRF_RT_REG_QWORD,
+use windows::core::{implement, Ref, PWSTR};
+use windows::Win32::Foundation::{CloseHandle, S_OK};
+use windows::Win32::Media::Audio::{
+    eCapture, AudioSessionStateActive, IAudioSessionControl2, IAudioSessionManager2,
+    IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
 };
-use windows::Win32::System::Threading::{CreateEventW, WaitForMultipleObjects};
+use windows::Win32::Media::MediaFoundation::{
+    IMFSensorActivitiesReport, IMFSensorActivitiesReportCallback,
+    IMFSensorActivitiesReportCallback_Impl, IMFSensorActivityMonitor,
+    MFCreateSensorActivityMonitor, MFStartup, MFSTARTUP_LITE, MF_VERSION,
+};
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
+};
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CAPITAL};
 
-use super::{app_name, in_use, tidy};
+use super::exe_name;
 
-const CONSENT_STORE: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore";
-const NON_PACKAGED: &str = "NonPackaged";
-const CAPABILITIES: [&str; 2] = ["microphone", "webcam"];
-/// Re-read anyway now and then, and retry if the keys do not exist yet.
-const FALLBACK: Duration = Duration::from_secs(30);
-/// Registry key names are at most 255 characters.
-const MAX_KEY_NAME: usize = 256;
+/// Longest process image path we read.
+const MAX_PATH_LEN: usize = 1024;
 
-/// An open registry key, closed on drop.
-struct Key(HKEY);
-
-impl Key {
-    fn open(path: &str) -> Option<Self> {
-        let mut key = HKEY::default();
-        // SAFETY: `path` outlives the call (HSTRING is NUL-terminated); `key` is a
-        // valid out-pointer.
-        let status = unsafe {
-            RegOpenKeyExW(
-                HKEY_CURRENT_USER,
-                &HSTRING::from(path),
-                None,
-                KEY_READ | KEY_NOTIFY,
-                &mut key,
-            )
-        };
-        (status == ERROR_SUCCESS).then_some(Self(key))
-    }
-
-    fn subkeys(&self) -> Vec<String> {
-        let mut names = Vec::new();
-        let mut buf = [0u16; MAX_KEY_NAME];
-        for index in 0.. {
-            let mut len = buf.len() as u32;
-            // SAFETY: `buf` is writable for `len` UTF-16 units; the key is open.
-            let status = unsafe {
-                RegEnumKeyExW(
-                    self.0,
-                    index,
-                    Some(PWSTR(buf.as_mut_ptr())),
-                    &mut len,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            };
-            if status == ERROR_NO_MORE_ITEMS || status != ERROR_SUCCESS {
-                break;
-            }
-            names.push(String::from_utf16_lossy(&buf[..len as usize]));
-        }
-        names
-    }
-
-    fn qword(&self, subkey: &str, value: &str) -> Option<u64> {
-        let mut data = 0u64;
-        let mut size = std::mem::size_of::<u64>() as u32;
-        // SAFETY: `data` is a writable u64 and `size` holds its size; the strings
-        // outlive the call.
-        let status = unsafe {
-            RegGetValueW(
-                self.0,
-                &HSTRING::from(subkey),
-                &HSTRING::from(value),
-                RRF_RT_REG_QWORD,
-                None,
-                Some((&raw mut data).cast()),
-                Some(&mut size),
-            )
-        };
-        (status == ERROR_SUCCESS).then_some(data)
-    }
-
-    fn in_use(&self, subkey: &str) -> bool {
-        in_use(
-            self.qword(subkey, "LastUsedTimeStart"),
-            self.qword(subkey, "LastUsedTimeStop"),
+/// Name of the program running as `pid` (`Discord`), if it can be read.
+pub fn process_name(pid: u32) -> Option<String> {
+    // SAFETY: plain handle query; the handle is closed below.
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
+    let mut buf = [0u16; MAX_PATH_LEN];
+    let mut len = buf.len() as u32;
+    // SAFETY: `buf` is writable for `len` UTF-16 units; the handle is valid.
+    let read = unsafe {
+        QueryFullProcessImageNameW(
+            process,
+            PROCESS_NAME_WIN32,
+            PWSTR(buf.as_mut_ptr()),
+            &mut len,
         )
-    }
-}
-
-impl Drop for Key {
-    fn drop(&mut self) {
-        // SAFETY: the key was opened by `Key::open` and is closed exactly once.
-        let _ = unsafe { RegCloseKey(self.0) };
-    }
-}
-
-/// Names of the apps using `capability` (`microphone` or `webcam`) right now.
-pub fn apps_using(capability: &str) -> Vec<String> {
-    let path = format!(r"{CONSENT_STORE}\{capability}");
-    let Some(store) = Key::open(&path) else {
-        return Vec::new();
     };
-    let mut names = Vec::new();
-    for sub in store.subkeys() {
-        if sub == NON_PACKAGED {
-            if let Some(desktop) = Key::open(&format!(r"{path}\{NON_PACKAGED}")) {
-                for app in desktop.subkeys() {
-                    if desktop.in_use(&app) {
-                        names.push(app_name(&app, false));
+    // SAFETY: the handle came from OpenProcess and is closed exactly once.
+    let _ = unsafe { CloseHandle(process) };
+    read.ok()?;
+    Some(exe_name(&String::from_utf16_lossy(&buf[..len as usize])))
+}
+
+/// Prepares COM (multithreaded) and Media Foundation on the calling thread.
+pub fn init_thread() {
+    // SAFETY: initialises COM for this thread; repeated calls are harmless.
+    let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+    // SAFETY: plain library start-up; balanced by process exit.
+    if let Err(err) = unsafe { MFStartup(MF_VERSION, MFSTARTUP_LITE) } {
+        log::warn!("Media Foundation did not start: {err}");
+    }
+}
+
+/// Processes with an active capture (recording) session on any input device.
+pub fn microphone_pids() -> windows::core::Result<BTreeSet<u32>> {
+    let own = std::process::id();
+    let mut pids = BTreeSet::new();
+    // SAFETY: COM is initialised on this thread by `init_thread`; all interfaces
+    // below are reference-counted and released on drop.
+    unsafe {
+        let devices: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
+        let inputs = devices.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)?;
+        for d in 0..inputs.GetCount()? {
+            let Ok(device) = inputs.Item(d) else { continue };
+            let Ok(manager) = device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None) else {
+                continue;
+            };
+            let Ok(sessions) = manager.GetSessionEnumerator() else {
+                continue;
+            };
+            for s in 0..sessions.GetCount()? {
+                let Ok(session) = sessions.GetSession(s) else {
+                    continue;
+                };
+                if session.GetState() != Ok(AudioSessionStateActive) {
+                    continue;
+                }
+                let Ok(session) = windows::core::Interface::cast::<IAudioSessionControl2>(&session)
+                else {
+                    continue;
+                };
+                if session.IsSystemSoundsSession() == S_OK {
+                    continue;
+                }
+                if let Ok(pid) = session.GetProcessId() {
+                    if pid != 0 && pid != own {
+                        pids.insert(pid);
                     }
                 }
             }
-        } else if store.in_use(&sub) {
-            names.push(app_name(&sub, true));
         }
     }
-    tidy(names)
+    Ok(pids)
 }
 
-/// An auto-reset event, closed on drop.
-struct Event(HANDLE);
+/// Processes streaming from a camera, kept up to date by the sensor monitor.
+pub type CameraPids = Arc<Mutex<BTreeSet<u32>>>;
 
-impl Event {
-    fn new() -> Option<Self> {
-        // SAFETY: no security attributes or name; the handle is owned by `Event`.
-        unsafe { CreateEventW(None, false, false, PCWSTR::null()) }
-            .ok()
-            .map(Self)
-    }
+#[implement(IMFSensorActivitiesReportCallback)]
+struct CameraReports {
+    pids: CameraPids,
 }
 
-impl Drop for Event {
-    fn drop(&mut self) {
-        // SAFETY: the handle came from CreateEventW and is closed exactly once.
-        let _ = unsafe { CloseHandle(self.0) };
-    }
-}
-
-/// Calls `on_change` whenever anything under the microphone or camera keys
-/// changes (and every 30 s as a fallback). Never returns.
-pub fn watch_consent_store(on_change: &mut dyn FnMut()) {
-    loop {
-        let keys: Vec<Key> = CAPABILITIES
-            .iter()
-            .filter_map(|c| Key::open(&format!(r"{CONSENT_STORE}\{c}")))
-            .collect();
-        let events: Vec<Event> = keys.iter().filter_map(|_| Event::new()).collect();
-        if keys.is_empty() || events.len() != keys.len() {
-            std::thread::sleep(FALLBACK);
-            on_change();
-            continue;
-        }
-        // Re-arm and wait until the keys change; reopen them if arming fails.
-        loop {
-            let armed = keys.iter().zip(&events).all(|(key, event)| {
-                // SAFETY: the key and event stay open while the notification is armed
-                // (both live until this loop ends); the thread keeps running, which
-                // async registry notifications require.
-                let status = unsafe {
-                    RegNotifyChangeKeyValue(
-                        key.0,
-                        true,
-                        REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET,
-                        Some(event.0),
-                        true,
-                    )
+impl IMFSensorActivitiesReportCallback_Impl for CameraReports_Impl {
+    fn OnActivitiesReport(
+        &self,
+        report: Ref<IMFSensorActivitiesReport>,
+    ) -> windows::core::Result<()> {
+        let report = report.ok()?;
+        let mut streaming = BTreeSet::new();
+        // SAFETY: the report is valid for the duration of the callback.
+        unsafe {
+            for d in 0..report.GetCount()? {
+                let Ok(device) = report.GetActivityReport(d) else {
+                    continue;
                 };
-                status == ERROR_SUCCESS
-            });
-            if !armed {
-                log::warn!("failed to watch the microphone/camera registry keys");
-                std::thread::sleep(FALLBACK);
-                break;
+                for p in 0..device.GetProcessCount()? {
+                    let Ok(process) = device.GetProcessActivity(p) else {
+                        continue;
+                    };
+                    if process.GetStreamingState().is_ok_and(|s| s.as_bool()) {
+                        if let Ok(pid) = process.GetProcessId() {
+                            streaming.insert(pid);
+                        }
+                    }
+                }
             }
-            let handles: Vec<HANDLE> = events.iter().map(|e| e.0).collect();
-            // SAFETY: all handles are valid events owned by `events`.
-            let _ = unsafe { WaitForMultipleObjects(&handles, false, FALLBACK.as_millis() as u32) };
-            on_change();
         }
+        *self.pids.lock().unwrap_or_else(PoisonError::into_inner) = streaming;
+        Ok(())
+    }
+}
+
+/// Starts watching the cameras; keep the monitor alive (it stops on drop).
+pub struct CameraMonitor(IMFSensorActivityMonitor);
+
+impl CameraMonitor {
+    pub fn start(pids: CameraPids) -> windows::core::Result<Self> {
+        let callback: IMFSensorActivitiesReportCallback = CameraReports { pids }.into();
+        // SAFETY: Media Foundation is started by `init_thread`; the callback object
+        // is reference-counted and kept by the monitor.
+        let monitor = unsafe { MFCreateSensorActivityMonitor(&callback)? };
+        // SAFETY: starts the monitor's own worker; stopped in `Drop`.
+        unsafe { monitor.Start()? };
+        Ok(Self(monitor))
+    }
+}
+
+impl Drop for CameraMonitor {
+    fn drop(&mut self) {
+        // SAFETY: the monitor was started in `start`.
+        let _ = unsafe { self.0.Stop() };
     }
 }
 
