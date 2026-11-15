@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the island window",
-  "windows": ["island"],
+  "windows": ["island", "snip"],
   "permissions": ["core:default", "opener:default"]
 }

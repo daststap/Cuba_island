@@ -26,6 +26,7 @@ pub struct Settings {
     pub hour12: bool,
     pub clipboard_hotkey: String,
     pub launcher_hotkey: String,
+    pub screenshot_hotkey: String,
     pub history_limit: u32,
     pub copy_peek: bool,
     /// Orange/green dots while the microphone/camera is in use.
@@ -47,6 +48,7 @@ impl Default for Settings {
             hour12: false,
             clipboard_hotkey: hotkeys::DEFAULT_CLIPBOARD.to_owned(),
             launcher_hotkey: hotkeys::DEFAULT_LAUNCHER.to_owned(),
+            screenshot_hotkey: hotkeys::DEFAULT_SCREENSHOT.to_owned(),
             history_limit: 500,
             copy_peek: true,
             privacy_dots: true,
@@ -61,6 +63,14 @@ pub const HISTORY_LIMITS: std::ops::RangeInclusive<u32> = 50..=5000;
 pub const OPACITY: std::ops::RangeInclusive<f64> = 0.5..=1.0;
 
 impl Settings {
+    pub fn hotkeys(&self) -> hotkeys::Keys<'_> {
+        hotkeys::Keys {
+            clipboard: &self.clipboard_hotkey,
+            launcher: &self.launcher_hotkey,
+            screenshot: &self.screenshot_hotkey,
+        }
+    }
+
     fn validate(&self) -> AppResult<()> {
         if !HISTORY_LIMITS.contains(&self.history_limit) {
             return Err(AppError::InvalidArgument(format!(
@@ -142,8 +152,11 @@ fn save(app: &AppHandle, settings: &Settings) -> AppResult<()> {
 
 /// Applies what changed between `old` and `new` to the running app.
 fn apply(app: &AppHandle, old: &Settings, new: &Settings) -> AppResult<()> {
-    if old.clipboard_hotkey != new.clipboard_hotkey || old.launcher_hotkey != new.launcher_hotkey {
-        hotkeys::rebind(app, &new.clipboard_hotkey, &new.launcher_hotkey)?;
+    if old.clipboard_hotkey != new.clipboard_hotkey
+        || old.launcher_hotkey != new.launcher_hotkey
+        || old.screenshot_hotkey != new.screenshot_hotkey
+    {
+        hotkeys::rebind(app, &new.hotkeys())?;
     }
     if old.autostart != new.autostart {
         let launcher = app.autolaunch();

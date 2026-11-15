@@ -198,6 +198,20 @@ pub fn paste_into_previous(app: &AppHandle) -> AppResult<()> {
     Ok(())
 }
 
+/// Gives `window` (another window of the app) the keyboard focus, even when
+/// Windows' foreground rules would refuse a plain request.
+pub fn bring_to_front(window: &tauri::WebviewWindow) -> AppResult<()> {
+    window.set_focus()?;
+    #[cfg(windows)]
+    {
+        let hwnd = win32::Hwnd::of(window)?;
+        if input::foreground() != Some(hwnd) && !input::activate(hwnd) {
+            log::warn!("could not bring {} to the foreground", window.label());
+        }
+    }
+    Ok(())
+}
+
 /// Whether the island is currently hidden because a full-screen app is in front.
 pub fn is_hidden(app: &AppHandle) -> bool {
     app.try_state::<Shared>()

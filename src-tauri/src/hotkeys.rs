@@ -1,5 +1,5 @@
-//! Global hotkeys: clipboard history (default Ctrl+Alt+V) and command line
-//! (default Alt+Space), both configurable in settings.
+//! Global hotkeys: clipboard history (default Ctrl+Alt+V), command line
+//! (default Alt+Space) and screenshot (default Ctrl+Alt+S), all configurable.
 //!
 //! If the default Alt+Space is taken at startup, Ctrl+Alt+Space is registered
 //! instead and the frontend tells the user via a toast.
@@ -18,21 +18,32 @@ use crate::window;
 
 pub const DEFAULT_CLIPBOARD: &str = "Ctrl+Alt+V";
 pub const DEFAULT_LAUNCHER: &str = "Alt+Space";
+pub const DEFAULT_SCREENSHOT: &str = "Ctrl+Alt+S";
 const LAUNCHER_FALLBACK: &str = "Ctrl+Alt+Space";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Action {
     Clipboard,
     Launcher,
+    Screenshot,
 }
 
 impl Action {
-    fn event(self) -> &'static str {
+    /// Event for the island; `None` for actions handled in Rust.
+    fn event(self) -> Option<&'static str> {
         match self {
-            Self::Clipboard => "hotkey://clipboard",
-            Self::Launcher => "hotkey://launcher",
+            Self::Clipboard => Some("hotkey://clipboard"),
+            Self::Launcher => Some("hotkey://launcher"),
+            Self::Screenshot => None,
         }
     }
+}
+
+/// The configured combinations, as text from settings.
+pub struct Keys<'a> {
+    pub clipboard: &'a str,
+    pub launcher: &'a str,
+    pub screenshot: &'a str,
 }
 
 /// Which keys ended up registered. Mirrored in `src/ipc/commands.ts`.
@@ -42,6 +53,7 @@ pub struct HotkeyStatus {
     /// e.g. "Ctrl+Alt+V"; `None` if it could not be registered.
     pub clipboard: Option<String>,
     pub launcher: Option<String>,
+    pub screenshot: Option<String>,
     /// Alt+Space was taken and the fallback is in use.
     pub launcher_fallback: bool,
 }
@@ -110,11 +122,14 @@ fn try_register(app: &AppHandle, shortcut: Shortcut) -> bool {
 
 /// Registers the configured hotkeys at startup; failures are reported through
 /// `hotkeys_status`, never fatal.
-pub fn register(app: &AppHandle, clipboard_key: &str, launcher_key: &str) {
-    let clipboard = parse(clipboard_key).ok().filter(|s| try_register(app, *s));
-    let mut launcher = parse(launcher_key).ok().filter(|s| try_register(app, *s));
+pub fn register(app: &AppHandle, keys: &Keys<'_>) {
+    let clipboard = parse(keys.clipboard).ok().filter(|s| try_register(app, *s));
+    let mut launcher = parse(keys.launcher).ok().filter(|s| try_register(app, *s));
+    let screenshot = parse(keys.screenshot)
+        .ok()
+        .filter(|s| try_register(app, *s));
     let mut fallback = false;
-    if launcher.is_none() && launcher_key == DEFAULT_LAUNCHER {
+    if launcher.is_none() && keys.launcher == DEFAULT_LAUNCHER {
         launcher = parse(LAUNCHER_FALLBACK)
             .ok()
             .filter(|s| try_register(app, *s));
@@ -124,26 +139,29 @@ pub fn register(app: &AppHandle, clipboard_key: &str, launcher_key: &str) {
         status: HotkeyStatus {
             clipboard: clipboard.as_ref().map(label),
             launcher: launcher.as_ref().map(label),
+            screenshot: screenshot.as_ref().map(label),
             launcher_fallback: fallback,
         },
         bindings: clipboard
             .map(|s| (s, Action::Clipboard))
             .into_iter()
             .chain(launcher.map(|s| (s, Action::Launcher)))
+            .chain(screenshot.map(|s| (s, Action::Screenshot)))
             .collect(),
     };
     log::info!("hotkeys: {:?}", registered.status);
     app.manage(Mutex::new(registered));
 }
 
-/// Switches to new hotkeys. If either cannot be registered (taken by another app),
+/// Switches to new hotkeys. If any cannot be registered (taken by another app),
 /// the previous ones are restored and an error explains which key is busy.
-pub fn rebind(app: &AppHandle, clipboard_key: &str, launcher_key: &str) -> AppResult<HotkeyStatus> {
-    let clipboard = parse(clipboard_key)?;
-    let launcher = parse(launcher_key)?;
-    if clipboard == launcher {
+pub fn rebind(app: &AppHandle, keys: &Keys<'_>) -> AppResult<HotkeyStatus> {
+    let clipboard = parse(keys.clipboard)?;
+    let launcher = parse(keys.launcher)?;
+    let screenshot = parse(keys.screenshot)?;
+    if clipboard == launcher || clipboard == screenshot || launcher == screenshot {
         return Err(AppError::InvalidArgument(
-            "у буфера и командной строки должны быть разные сочетания".into(),
+            "у буфера, командной строки и скриншота должны быть разные сочетания".into(),
         ));
     }
     let state = app.state::<Mutex<Registered>>();
@@ -155,7 +173,11 @@ pub fn rebind(app: &AppHandle, clipboard_key: &str, launcher_key: &str) -> AppRe
 
     let mut taken = None;
     let mut new_bindings = Vec::new();
-    for (shortcut, action) in [(clipboard, Action::Clipboard), (launcher, Action::Launcher)] {
+    for (shortcut, action) in [
+        (clipboard, Action::Clipboard),
+        (launcher, Action::Launcher),
+        (screenshot, Action::Screenshot),
+    ] {
         if try_register(app, shortcut) {
             new_bindings.push((shortcut, action));
         } else {
@@ -179,6 +201,7 @@ pub fn rebind(app: &AppHandle, clipboard_key: &str, launcher_key: &str) -> AppRe
     registered.status = HotkeyStatus {
         clipboard: Some(label(&clipboard)),
         launcher: Some(label(&launcher)),
+        screenshot: Some(label(&screenshot)),
         launcher_fallback: false,
     };
     registered.bindings = new_bindings;
@@ -230,14 +253,19 @@ fn on_shortcut(app: &AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
         return;
     };
     log::debug!("hotkey {action:?} pressed");
+    let Some(event) = action.event() else {
+        // Screenshots work even while the island hides behind a full-screen app.
+        crate::screenshot::start(app, std::time::Duration::ZERO);
+        return;
+    };
     if window::is_hidden(app) {
         return;
     }
     if let Err(err) = window::enter_input_mode(app) {
         log::error!("failed to enter input mode: {err}");
     }
-    if let Err(err) = app.emit(action.event(), ()) {
-        log::warn!("failed to emit {}: {err}", action.event());
+    if let Err(err) = app.emit(event, ()) {
+        log::warn!("failed to emit {event}: {err}");
     }
 }
 

@@ -8,9 +8,10 @@ mod indicators;
 mod launcher;
 mod media;
 mod notes;
+#[cfg(windows)]
+mod screenshot;
 mod settings;
 mod shelf;
-#[cfg(windows)]
 mod shell;
 mod storage;
 mod system;
@@ -96,6 +97,11 @@ pub fn run() {
             notes::timer_control,
             notes::timer_silence,
             indicators::indicators_get,
+            screenshot::screenshot_start,
+            screenshot::screenshot_frame,
+            screenshot::screenshot_ready,
+            screenshot::screenshot_copy,
+            screenshot::screenshot_close,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
@@ -113,11 +119,8 @@ pub fn run() {
             launcher::start(handle, db.clone())?;
             shelf::start(handle, db.clone())?;
             notes::start(handle, db);
-            hotkeys::register(
-                handle,
-                &settings.clipboard_hotkey,
-                &settings.launcher_hotkey,
-            );
+            screenshot::setup(handle);
+            hotkeys::register(handle, &settings.hotkeys());
             claude::start(handle);
             indicators::start(handle);
             tray::create(handle)?;
