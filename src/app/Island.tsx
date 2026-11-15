@@ -13,8 +13,9 @@ import { MediaCompact, MediaPeek, MediaPlayer } from "../features/media/views";
 import { Onboarding, SettingsTab } from "../features/settings/SettingsTab";
 import { ShelfBadge, ShelfTab } from "../features/shelf/ShelfTab";
 import { useShelfSync } from "../features/shelf/store";
-import { AlertPeek, NotesTab, TimerBadge } from "../features/notes/NotesTab";
-import { useNotesStore, useNotesSync } from "../features/notes/store";
+import { AlertPeek, NotesTab } from "../features/notes/NotesTab";
+import { TimerCompact } from "../features/notes/Timer";
+import { useNotesStore, useNotesSync, useTimerActive } from "../features/notes/store";
 import { useSettingsStore, useSettingsSync } from "../features/settings/store";
 import { ru } from "../i18n/ru";
 import type { MediaState, UpdateInfo } from "../ipc/commands";
@@ -173,9 +174,12 @@ export function Island() {
 }
 
 function CompactView({ mode, media }: { mode: IslandState["mode"]; media: MediaState | null }) {
+  const timerActive = useTimerActive();
   return (
     <div role="status" aria-label={ru.appName} data-mode={mode} className="relative h-full">
-      {media ? (
+      {timerActive ? (
+        <TimerCompact />
+      ) : media ? (
         <MediaCompact media={media} />
       ) : (
         <div className="flex h-full items-center justify-between px-5 text-[13px] font-semibold">
@@ -186,7 +190,6 @@ function CompactView({ mode, media }: { mode: IslandState["mode"]; media: MediaS
       {/* Claude Code status sits in the free middle of the pill. */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2">
         <ClaudeBadge />
-        <TimerBadge />
         <ShelfBadge />
       </div>
     </div>

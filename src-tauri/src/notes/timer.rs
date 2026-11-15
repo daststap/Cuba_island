@@ -67,6 +67,39 @@ impl TimerState {
     }
 }
 
+/// How long the "time's up" sound keeps repeating if nobody reacts.
+pub const RING_FOR_MS: i64 = 60_000;
+/// Pause between repeats.
+pub const RING_EVERY_MS: i64 = 2_000;
+
+/// Repeats the "time's up" sound, like a phone alarm, until silenced or for a minute.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Ringer {
+    until: i64,
+    next: i64,
+}
+
+impl Ringer {
+    pub fn start(now: i64) -> Self {
+        Self {
+            until: now + RING_FOR_MS,
+            next: now,
+        }
+    }
+
+    /// Whether to play the sound at `now`; `None` once the ringing is over.
+    pub fn poll(&mut self, now: i64) -> Option<bool> {
+        if now >= self.until {
+            return None;
+        }
+        if now >= self.next {
+            self.next = now + RING_EVERY_MS;
+            return Some(true);
+        }
+        Some(false)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -95,5 +128,16 @@ mod tests {
     #[test]
     fn caps_the_duration() {
         assert_eq!(TimerState::start(u64::MAX, 0).duration_ms, MAX_DURATION_MS);
+    }
+
+    #[test]
+    fn rings_every_two_seconds_for_a_minute() {
+        let mut ringer = Ringer::start(0);
+        assert_eq!(ringer.poll(0), Some(true));
+        assert_eq!(ringer.poll(1_000), Some(false));
+        assert_eq!(ringer.poll(2_000), Some(true));
+        assert_eq!(ringer.poll(3_500), Some(false));
+        assert_eq!(ringer.poll(4_100), Some(true));
+        assert_eq!(ringer.poll(RING_FOR_MS), None);
     }
 }

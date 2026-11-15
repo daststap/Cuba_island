@@ -2,7 +2,14 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import { useIslandStore } from "../../app/store";
 import { ru } from "../../i18n/ru";
-import { notesList, reportError, timerGet, type Note, type TimerState } from "../../ipc/commands";
+import {
+  notesList,
+  reportError,
+  timerGet,
+  timerSilence,
+  type Note,
+  type TimerState,
+} from "../../ipc/commands";
 import { onNotesChanged, onReminder, onTimer, onTimerDone } from "../../ipc/events";
 
 /** What the alert peek is showing. */
@@ -12,15 +19,23 @@ interface NotesStore {
   notes: Note[];
   timer: TimerState;
   alert: Alert | null;
+  /** Last duration set on the wheels, kept like the iPhone does. */
+  pickedMs: number;
 }
 
 export const IDLE_TIMER: TimerState = { durationMs: 0, endsAt: null, pausedRemainingMs: null };
+export const DEFAULT_PICKED_MS = 5 * 60_000;
 
 export const useNotesStore = create<NotesStore>()(() => ({
   notes: [],
   timer: IDLE_TIMER,
   alert: null,
+  pickedMs: DEFAULT_PICKED_MS,
 }));
+
+/** Whether a timer is running or paused. */
+export const useTimerActive = () =>
+  useNotesStore((s) => s.timer.endsAt !== null || s.timer.pausedRemainingMs !== null);
 
 /** Remaining ms of a timer at `now` (pure; the countdown re-renders only itself). */
 export function remainingMs(timer: TimerState, now: number): number {
@@ -48,16 +63,26 @@ function raise(alert: Alert) {
   }
 }
 
+/** Forgets the alert; a ringing timer goes quiet. */
+function clearAlert() {
+  const { alert } = useNotesStore.getState();
+  if (!alert) return;
+  useNotesStore.setState({ alert: null });
+  if (alert.kind === "timer") {
+    timerSilence().catch((error: unknown) => {
+      reportError("timer_silence", error);
+    });
+  }
+}
+
 // Opening the panel (hovering the alert opens the notes tab) also counts as a reaction.
 useIslandStore.subscribe((island) => {
-  if (island.state.mode === "expanded" && useNotesStore.getState().alert) {
-    useNotesStore.setState({ alert: null });
-  }
+  if (island.state.mode === "expanded") clearAlert();
 });
 
 /** Clears the alert (the user reacted). */
 export function dismissAlert(): void {
-  useNotesStore.setState({ alert: null });
+  clearAlert();
   useIslandStore.getState().dispatch({ type: "endPeek" });
 }
 

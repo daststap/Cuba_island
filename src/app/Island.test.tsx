@@ -7,7 +7,7 @@ import { ru } from "../i18n/ru";
 import { useSettingsStore } from "../features/settings/store";
 import { useClaudeStore } from "../features/claude/store";
 import { SHELF_DROP_MESSAGE, useShelfStore } from "../features/shelf/store";
-import { IDLE_TIMER, useNotesStore } from "../features/notes/store";
+import { DEFAULT_PICKED_MS, IDLE_TIMER, useNotesStore } from "../features/notes/store";
 import type {
   Note,
   ShelfItem,
@@ -124,7 +124,12 @@ describe("Island", () => {
     claudeSessions = [];
     shelfItems = [];
     notes = [];
-    useNotesStore.setState({ notes: [], timer: IDLE_TIMER, alert: null });
+    useNotesStore.setState({
+      notes: [],
+      timer: IDLE_TIMER,
+      alert: null,
+      pickedMs: DEFAULT_PICKED_MS,
+    });
     useShelfStore.setState({ items: [], dragging: false });
     hooksInstalled = false;
     useClaudeStore.setState({ sessions: [], attention: null });
@@ -741,27 +746,52 @@ describe("Island", () => {
       expect(useNotesStore.getState().alert).toBeNull();
     });
 
-    it("starts a preset timer and shows the countdown in the pill", async () => {
+    it("sets the timer on the wheels and starts it", async () => {
       openNotes();
-      fireEvent.click(await screen.findByRole("button", { name: ru.notes.startMinutes(5) }));
-      await vi.waitFor(() => {
-        expect(calls).toContainEqual({ cmd: "timer_start", args: { durationMs: 300_000 } });
+      const minutes = await screen.findByRole("spinbutton", { name: ru.notes.minutes });
+      expect(minutes).toHaveAttribute("aria-valuenow", "5");
+      fireEvent.keyDown(minutes, { key: "ArrowUp" });
+      fireEvent.keyDown(screen.getByRole("spinbutton", { name: ru.notes.seconds }), {
+        key: "End",
       });
+      expect(screen.getByRole("button", { name: ru.notes.cancel })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name: ru.notes.start }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "timer_start", args: { durationMs: 419_000 } });
+      });
+    });
+
+    it("counts down in a ring and in the pill", async () => {
+      openNotes();
+      await screen.findAllByRole("spinbutton");
       act(() => {
         useNotesStore.setState({
-          timer: { durationMs: 300_000, endsAt: Date.now() + 300_000, pausedRemainingMs: null },
+          timer: { durationMs: 600_000, endsAt: Date.now() + 300_000, pausedRemainingMs: null },
         });
+      });
+      expect(await screen.findByRole("timer", { name: ru.notes.left })).toHaveTextContent("5:00");
+      expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: ru.notes.pause }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "timer_control", args: { action: "pause" } });
+      });
+      act(() => {
         useIslandStore.setState({ state: { mode: "compact" } });
       });
       expect(await screen.findByRole("timer", { name: ru.notes.timer })).toHaveTextContent("5:00");
     });
 
-    it("announces a finished timer", async () => {
+    it("announces a finished timer and silences it on click", async () => {
       render(<Island />);
       await act(async () => {
         await emit("notes://timer-done");
       });
-      expect(await screen.findByRole("alert")).toHaveTextContent(ru.notes.timerDone);
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(ru.notes.timerDone);
+      fireEvent.click(alert);
+      await vi.waitFor(() => {
+        expect(calls.some((c) => c.cmd === "timer_silence")).toBe(true);
+      });
     });
   });
 });

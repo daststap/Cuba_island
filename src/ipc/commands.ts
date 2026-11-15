@@ -307,6 +307,11 @@ export function timerControl(action: "pause" | "resume" | "cancel"): Promise<Tim
   return invoke("timer_control", { action });
 }
 
+/** Stops the repeating "time's up" sound. */
+export function timerSilence(): Promise<void> {
+  return invoke("timer_silence");
+}
+
 /** Mirrors `updater::UpdateInfo`. */
 export interface UpdateInfo {
   version: string;

@@ -1,40 +1,16 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import { useIslandStore } from "../../app/store";
 import { ru } from "../../i18n/ru";
-import {
-  notesAdd,
-  notesDelete,
-  notesSetDone,
-  reportError,
-  timerControl,
-  timerStart,
-  type Note,
-  type TimerState,
-} from "../../ipc/commands";
+import { notesAdd, notesDelete, notesSetDone, reportError, type Note } from "../../ipc/commands";
 import { formatReminder, parseReminder } from "./reminder";
-import { dismissAlert, formatCountdown, remainingMs, useNotesStore } from "./store";
-
-const TIMER_PRESETS_MIN = [1, 5, 10, 25];
+import { dismissAlert, useNotesStore } from "./store";
+import { TimerPanel } from "./Timer";
+import { useNow } from "./useNow";
 
 function fail(context: string) {
   return (error: unknown) => {
     reportError(context, error);
   };
-}
-
-/** Current time, ticking every `ms` only while `active`. */
-function useNow(active: boolean, ms = 250): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return;
-    const id = setInterval(() => {
-      setNow(Date.now());
-    }, ms);
-    return () => {
-      clearInterval(id);
-    };
-  }, [active, ms]);
-  return now;
 }
 
 /** Note text with the recognised time phrase highlighted. */
@@ -134,95 +110,9 @@ function NewNote() {
   );
 }
 
-function TimerPanel({ timer }: { timer: TimerState }) {
-  const running = timer.endsAt !== null;
-  const paused = timer.pausedRemainingMs !== null;
-  const now = useNow(running);
-  const [minutes, setMinutes] = useState("");
-
-  const start = (min: number) => {
-    if (min > 0) timerStart(min * 60_000).catch(fail("timer_start"));
-  };
-
-  return (
-    <section
-      aria-label={ru.notes.timer}
-      className="flex w-44 shrink-0 flex-col gap-2 border-l border-white/10 pl-4"
-    >
-      <div className="text-xs text-[var(--island-muted)]">{ru.notes.timer}</div>
-      <div className="text-4xl font-light tabular-nums" role="timer">
-        {running || paused ? formatCountdown(remainingMs(timer, now)) : "0:00"}
-      </div>
-      {running || paused ? (
-        <div className="flex gap-2">
-          <button
-            type="button"
-            className="flex-1 rounded-lg bg-white/15 py-1.5 text-xs hover:bg-white/25"
-            onClick={() => {
-              timerControl(running ? "pause" : "resume").catch(fail("timer_control"));
-            }}
-          >
-            {running ? ru.notes.pause : ru.notes.resume}
-          </button>
-          <button
-            type="button"
-            className="flex-1 rounded-lg bg-white/8 py-1.5 text-xs hover:bg-white/15"
-            onClick={() => {
-              timerControl("cancel").catch(fail("timer_control"));
-            }}
-          >
-            {ru.notes.cancel}
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-4 gap-1">
-            {TIMER_PRESETS_MIN.map((min) => (
-              <button
-                key={min}
-                type="button"
-                aria-label={ru.notes.startMinutes(min)}
-                className="rounded-lg bg-white/10 py-1 text-xs hover:bg-white/20"
-                onClick={() => {
-                  start(min);
-                }}
-              >
-                {min}
-              </button>
-            ))}
-          </div>
-          <input
-            type="number"
-            min={1}
-            max={1440}
-            inputMode="numeric"
-            value={minutes}
-            placeholder={ru.notes.customMinutes}
-            aria-label={ru.notes.customMinutes}
-            onMouseDown={() => {
-              useIslandStore.getState().enterInput();
-            }}
-            onChange={(e) => {
-              setMinutes(e.target.value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                start(Number(minutes));
-                setMinutes("");
-              }
-            }}
-            className="w-full rounded-lg bg-white/10 px-2 py-1 text-xs outline-none placeholder:text-[var(--island-muted)]"
-          />
-        </>
-      )}
-    </section>
-  );
-}
-
 /** The "Заметки" tab: notes with reminders on the left, a timer on the right. */
 export function NotesTab() {
   const notes = useNotesStore((s) => s.notes);
-  const timer = useNotesStore((s) => s.timer);
   const now = useNow(true, 30_000);
 
   return (
@@ -241,7 +131,7 @@ export function NotesTab() {
           </ul>
         )}
       </div>
-      <TimerPanel timer={timer} />
+      <TimerPanel />
     </div>
   );
 }
@@ -267,22 +157,5 @@ export function AlertPeek() {
         <span className="block text-[11px] text-[var(--island-muted)]">{ru.notes.dismiss}</span>
       </span>
     </button>
-  );
-}
-
-/** Countdown in the pill while the timer runs (or is paused). */
-export function TimerBadge() {
-  const timer = useNotesStore((s) => s.timer);
-  const running = timer.endsAt !== null;
-  const now = useNow(running, 500);
-  if (!running && timer.pausedRemainingMs === null) return null;
-  return (
-    <span
-      role="timer"
-      aria-label={ru.notes.timer}
-      className={`text-[12px] font-semibold tabular-nums ${running ? "text-[#ffb37a]" : "text-white/40"}`}
-    >
-      {formatCountdown(remainingMs(timer, now))}
-    </span>
   );
 }

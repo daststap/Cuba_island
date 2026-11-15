@@ -16,6 +16,7 @@ use crate::storage::Db;
 use crate::thread::spawn_supervised;
 use crate::util::now_ms;
 pub use store::Note;
+use timer::Ringer;
 pub use timer::TimerState;
 
 const TICK: Duration = Duration::from_secs(1);
@@ -23,6 +24,8 @@ const TICK: Duration = Duration::from_secs(1);
 pub struct NotesShared {
     db: Db,
     timer: Mutex<TimerState>,
+    /// Set while a finished timer is ringing.
+    ringer: Mutex<Option<Ringer>>,
 }
 
 type Shared = Arc<NotesShared>;
@@ -30,6 +33,23 @@ type Shared = Arc<NotesShared>;
 impl NotesShared {
     fn timer(&self) -> std::sync::MutexGuard<'_, TimerState> {
         self.timer.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn ringer(&self) -> std::sync::MutexGuard<'_, Option<Ringer>> {
+        self.ringer.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Whether the ringing timer should sound now (and forgets it once it is over).
+    fn ring(&self, now: i64) -> bool {
+        let mut ringer = self.ringer();
+        match ringer.as_mut().map(|r| r.poll(now)) {
+            Some(Some(sound)) => sound,
+            Some(None) => {
+                *ringer = None;
+                false
+            }
+            None => false,
+        }
     }
 }
 
@@ -76,9 +96,12 @@ fn tick(app: &AppHandle, shared: &NotesShared) {
     };
     if finished {
         log::info!("timer finished");
-        chime();
+        *shared.ringer() = Some(Ringer::start(now));
         emit(app, "notes://timer", TimerState::default());
         emit(app, "notes://timer-done", ());
+    }
+    if shared.ring(now) {
+        chime();
     }
 }
 
@@ -86,6 +109,7 @@ pub fn start(app: &AppHandle, db: Db) {
     let shared: Shared = Arc::new(NotesShared {
         db,
         timer: Mutex::new(TimerState::default()),
+        ringer: Mutex::new(None),
     });
     app.manage(shared.clone());
     let app = app.clone();
@@ -150,6 +174,7 @@ pub fn timer_start(
 ) -> AppResult<TimerState> {
     let state = TimerState::start(duration_ms, now_ms());
     *shared.timer() = state;
+    *shared.ringer() = None;
     emit(&app, "notes://timer", state);
     Ok(state)
 }
@@ -178,4 +203,11 @@ pub fn timer_control(
     };
     emit(&app, "notes://timer", state);
     Ok(state)
+}
+
+/// Stops the "time's up" sound (the user reacted to the alert).
+#[tauri::command]
+pub fn timer_silence(shared: State<'_, Shared>) -> AppResult<()> {
+    *shared.ringer() = None;
+    Ok(())
 }

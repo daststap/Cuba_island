@@ -24,6 +24,8 @@ export const SCENES = [
   "settings",
   "shelf",
   "notes",
+  "picker",
+  "timer",
 ] as const;
 export type Scene = (typeof SCENES)[number];
 
@@ -217,9 +219,9 @@ export async function setupDemo(scene: Scene): Promise<void> {
         case "launcher_search":
           return LAUNCH;
         case "notes_list":
-          return scene === "notes" ? NOTES : [];
+          return scene === "notes" || scene === "picker" ? NOTES : [];
         case "timer_get":
-          return scene === "notes"
+          return scene === "notes" || scene === "timer"
             ? { durationMs: 1_500_000, endsAt: Date.now() + 1_122_000, pausedRemainingMs: null }
             : { durationMs: 0, endsAt: null, pausedRemainingMs: null };
         case "shelf_list":
@@ -245,6 +247,10 @@ export async function setupDemo(scene: Scene): Promise<void> {
   switch (scene) {
     case "compact":
     case "music":
+    case "timer":
+      break;
+    case "picker":
+      store.setState({ state: { mode: "expanded", tab: "notes" }, inputMode: true });
       break;
     case "peek":
       store.setState({ state: { mode: "peek", kind: "media" } });

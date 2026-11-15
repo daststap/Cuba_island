@@ -93,6 +93,7 @@ pub fn run() {
             notes::timer_get,
             notes::timer_start,
             notes::timer_control,
+            notes::timer_silence,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
