@@ -4,6 +4,7 @@ mod claude;
 mod clipboard;
 pub mod error;
 mod hotkeys;
+mod indicators;
 mod launcher;
 mod media;
 mod notes;
@@ -94,6 +95,7 @@ pub fn run() {
             notes::timer_start,
             notes::timer_control,
             notes::timer_silence,
+            indicators::indicators_get,
         ])
         .setup(|app| {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
@@ -117,6 +119,7 @@ pub fn run() {
                 &settings.launcher_hotkey,
             );
             claude::start(handle);
+            indicators::start(handle);
             tray::create(handle)?;
             Ok(())
         })
