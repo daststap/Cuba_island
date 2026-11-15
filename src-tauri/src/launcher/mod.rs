@@ -43,6 +43,10 @@ fn app_keywords(id: &str) -> &'static str {
 /// Built-in commands: id and words they are found by (the label lives in `ru.ts`).
 const COMMANDS: &[(&str, &str)] = &[
     ("cmd:settings", "Настройки Escape settings"),
+    (
+        "cmd:screenshot",
+        "Скриншот области экрана снимок screenshot",
+    ),
     ("cmd:lock", "Заблокировать компьютер lock"),
     ("cmd:quit", "Выйти из Escape quit exit"),
 ];
@@ -267,6 +271,12 @@ pub async fn launcher_run(
             shared.record_launch(&id);
             match value {
                 "quit" => app.exit(0),
+                // The island folds away first, then the screen is captured.
+                "screenshot" => {
+                    // The overlay takes focus itself, like an app being opened.
+                    crate::window::hand_over_focus(&app)?;
+                    crate::screenshot::start(&app, crate::screenshot::COLLAPSE_DELAY);
+                }
                 "lock" => {
                     crate::window::hand_over_focus(&app)?;
                     #[cfg(windows)]

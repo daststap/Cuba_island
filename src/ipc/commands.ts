@@ -141,6 +141,7 @@ export function launcherRun(id: string): Promise<void> {
 export interface HotkeyStatus {
   clipboard: string | null;
   launcher: string | null;
+  screenshot: string | null;
   launcherFallback: boolean;
 }
 
@@ -161,6 +162,7 @@ export interface Settings {
   hour12: boolean;
   clipboardHotkey: string;
   launcherHotkey: string;
+  screenshotHotkey: string;
   historyLimit: number;
   copyPeek: boolean;
   /** Orange/green dots while the microphone/camera is in use. */
@@ -360,4 +362,29 @@ export interface Indicators {
 
 export function indicatorsGet(): Promise<Indicators> {
   return invoke("indicators_get");
+}
+
+/** The island's button: folds the island, then freezes the screen under the cursor. */
+export function screenshotStart(): Promise<void> {
+  return invoke("screenshot_start");
+}
+
+/** The frozen monitor: 8-byte little-endian `[width, height]` header, then RGBA. */
+export function screenshotFrame(): Promise<ArrayBuffer> {
+  return invoke("screenshot_frame");
+}
+
+/** The overlay has drawn the picture and can be shown. */
+export function screenshotReady(): Promise<void> {
+  return invoke("screenshot_ready");
+}
+
+/** Copies the finished image (same format as the frame) and closes the overlay. */
+export function screenshotCopy(image: Uint8Array): Promise<void> {
+  return invoke("screenshot_copy", image);
+}
+
+/** Closes the overlay without copying. */
+export function screenshotClose(): Promise<void> {
+  return invoke("screenshot_close");
 }

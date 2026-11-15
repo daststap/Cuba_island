@@ -19,7 +19,7 @@ use crate::error::{AppError, AppResult};
 
 const LABEL: &str = "snip";
 /// Time for the island to fold away when the capture starts from its button.
-const COLLAPSE_DELAY: Duration = Duration::from_millis(250);
+pub const COLLAPSE_DELAY: Duration = Duration::from_millis(250);
 /// Width and height prefix of raw frames, little-endian u32 each.
 const HEADER: usize = 8;
 

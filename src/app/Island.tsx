@@ -7,6 +7,7 @@ import { ClipboardPeek, ClipboardTab } from "../features/clipboard/ClipboardTab"
 import { useClipboardSync } from "../features/clipboard/store";
 import { Clock, LongDate } from "../features/clock/Clock";
 import { useIndicatorsSync } from "../features/indicators/store";
+import { ScreenshotButton } from "../features/screenshot/ScreenshotButton";
 import { CapsPeek, PrivacyDots, SensorsLine } from "../features/indicators/views";
 import { LauncherTab } from "../features/launcher/LauncherTab";
 import { useMediaStore, useMediaSync } from "../features/media/store";
@@ -218,11 +219,10 @@ function ExpandedView({
   return (
     <div className="flex h-full flex-col px-6 pt-3 pb-6">
       <div className="relative flex items-center justify-center">
-        {player && (
-          <div className="absolute left-0 flex items-baseline gap-2 text-xs text-[var(--island-muted)]">
-            <Clock className="font-semibold text-[var(--island-fg)]" />
-          </div>
-        )}
+        <div className="absolute left-0 flex items-center gap-1.5 text-xs text-[var(--island-muted)]">
+          {player && <Clock className="font-semibold text-[var(--island-fg)]" />}
+          <ScreenshotButton />
+        </div>
         <div role="tablist" aria-label={ru.tabsLabel} className="flex gap-1">
           {TABS.map((t) => (
             <button

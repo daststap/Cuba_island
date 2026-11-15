@@ -20,6 +20,17 @@ async function start() {
     }
   }
 
+  // The screenshot overlay is the same page opened with `?snip`.
+  if (new URLSearchParams(window.location.search).has("snip")) {
+    const { SnipApp } = await import("./features/screenshot/SnipApp");
+    createRoot(root).render(
+      <StrictMode>
+        <SnipApp />
+      </StrictMode>,
+    );
+    return;
+  }
+
   createRoot(root).render(
     <StrictMode>
       <Island />

@@ -60,6 +60,7 @@ const CLIPS: ClipItem[] = [
 const DEFAULT_HOTKEYS: HotkeyStatus = {
   clipboard: "Ctrl+Alt+V",
   launcher: "Alt+Space",
+  screenshot: "Ctrl+Alt+S",
   launcherFallback: false,
 };
 const RESULTS: LaunchResult[] = [
@@ -76,6 +77,7 @@ const DEFAULT_SETTINGS: Settings = {
   hour12: false,
   clipboardHotkey: "Ctrl+Alt+V",
   launcherHotkey: "Alt+Space",
+  screenshotHotkey: "Ctrl+Alt+S",
   historyLimit: 500,
   copyPeek: true,
   privacyDots: true,
@@ -861,6 +863,16 @@ describe("Island", () => {
         await emit("indicators://caps-lock", true);
       });
       expect(useIslandStore.getState().state.mode).toBe("compact");
+    });
+  });
+
+  it("folds the island and starts a screenshot from the panel button", async () => {
+    useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
+    render(<Island />);
+    fireEvent.click(await screen.findByRole("button", { name: ru.screenshot.take }));
+    expect(useIslandStore.getState().state.mode).toBe("compact");
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.cmd === "screenshot_start")).toBe(true);
     });
   });
 });
