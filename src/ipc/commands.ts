@@ -345,6 +345,12 @@ export function setErrorSink(sink: ErrorSink | undefined): void {
 export function reportError(context: string, error: unknown): void {
   const message = isAppError(error) ? error.message : String(error);
   console.error(`[${context}] ${isAppError(error) ? `${error.kind}: ` : ""}${message}`);
+  // Also into the app log; never let reporting itself fail loudly.
+  try {
+    invoke("report_error", { context, message }).catch(() => undefined);
+  } catch {
+    // No Tauri (unit tests without IPC mocks).
+  }
   errorSink?.(message);
 }
 
@@ -370,8 +376,20 @@ export function screenshotStart(): Promise<void> {
 }
 
 /** The frozen monitor: 8-byte little-endian `[width, height]` header, then RGBA. */
-export function screenshotFrame(): Promise<ArrayBuffer> {
-  return invoke("screenshot_frame");
+export async function screenshotFrame(): Promise<ArrayBuffer> {
+  const raw: unknown = await invoke("screenshot_frame");
+  if (raw instanceof ArrayBuffer) return raw;
+  // Depending on the IPC transport, raw responses can also arrive as a typed or plain array.
+  const kind = Object.prototype.toString.call(raw);
+  console.warn(`[screenshot_frame] got ${kind}`);
+  invoke("report_error", { context: "screenshot_frame", message: `raw response as ${kind}` }).catch(
+    () => undefined,
+  );
+  if (ArrayBuffer.isView(raw)) {
+    return new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength).slice().buffer;
+  }
+  if (Array.isArray(raw)) return Uint8Array.from(raw as number[]).buffer;
+  throw new Error(`unexpected frame: ${kind}`);
 }
 
 /** The overlay has drawn the picture and can be shown. */

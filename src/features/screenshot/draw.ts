@@ -175,7 +175,11 @@ export function render(
 }
 
 /** `[width, height]` little-endian header + RGBA, the format Rust expects. */
-export function packImage(width: number, height: number, rgba: Uint8ClampedArray): Uint8Array<ArrayBuffer> {
+export function packImage(
+  width: number,
+  height: number,
+  rgba: Uint8ClampedArray,
+): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(8 + rgba.length);
   const view = new DataView(out.buffer);
   view.setUint32(0, width, true);

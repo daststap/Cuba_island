@@ -44,6 +44,12 @@ fn log_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Frontend errors go to the log file too (the page console is not visible in releases).
+#[tauri::command]
+fn report_error(context: String, message: String, window: tauri::WebviewWindow) {
+    log::error!("[{}] {context}: {message}", window.label());
+}
+
 pub fn run() {
     let result = tauri::Builder::default()
         // single-instance must be registered first so a second launch exits early.
@@ -60,6 +66,7 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            report_error,
             window::set_island_rect,
             window::set_input_mode,
             system::get_battery,
