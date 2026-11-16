@@ -284,3 +284,12 @@ pub fn chat_set_key(key: String, shared: State<'_, Shared>) -> AppResult<ChatSta
     let _ = key;
     Ok(state(&shared))
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn https_client_starts_with_our_tls_setup() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        assert!(reqwest::Client::builder().build().is_ok());
+    }
+}
