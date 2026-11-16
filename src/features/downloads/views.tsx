@@ -133,7 +133,7 @@ export function DownloadsList() {
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-3">
-                <span className="truncate font-medium">{item.name}</span>
+                <span className="truncate font-medium">{item.name || ru.downloads.unnamed}</span>
                 <span className="shrink-0 text-[var(--island-muted)] tabular-nums">
                   {describe(item)}
                 </span>

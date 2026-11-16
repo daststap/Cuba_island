@@ -157,6 +157,7 @@ export const ru = {
   },
   downloads: {
     list: "Загрузки",
+    unnamed: "Загрузка из браузера",
     progress: "Ход загрузок",
     of: (done: string, total: string) => `${done} из ${total}`,
     perSecond: (speed: string) => `${speed}/с`,

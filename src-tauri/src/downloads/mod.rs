@@ -66,6 +66,31 @@ fn emit<P: Serialize + Clone>(app: &AppHandle, event: &str, payload: P) {
 }
 
 /// Temporary download files in `dir` with their sizes and last writes.
+fn unix_ms(time: Option<SystemTime>) -> i64 {
+    time.and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// The file a finished download became: its own name without the temporary
+/// suffix, or — when the browser renamed it ("Не подтверждено 123456.~") —
+/// the file with the same creation time. `None` if it was cancelled.
+fn resolve_finished(dir: &Path, temp: &str, created: i64) -> Option<String> {
+    let has_content = |meta: &std::fs::Metadata| meta.is_file() && meta.len() > 0;
+    if let Some(name) = browser::final_name(temp).filter(|n| !browser::is_unconfirmed(n)) {
+        if std::fs::metadata(dir.join(name)).is_ok_and(|m| has_content(&m)) {
+            return Some(name.to_owned());
+        }
+    }
+    std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if browser::final_name(&name).is_some() {
+            return None;
+        }
+        let meta = std::fs::metadata(entry.path()).ok()?;
+        (has_content(&meta) && unix_ms(meta.created().ok()) == created).then_some(name)
+    })
+}
+
 fn partials(dir: &Path) -> Vec<Partial> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -80,15 +105,11 @@ fn partials(dir: &Path) -> Vec<Partial> {
             let meta = std::fs::metadata(entry.path())
                 .ok()
                 .filter(|m| m.is_file())?;
-            let modified = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
-                .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
             Some(Partial {
                 file,
                 size: meta.len(),
-                modified,
+                modified: unix_ms(meta.modified().ok()),
+                created: unix_ms(meta.created().ok()),
             })
         })
         .collect()
@@ -170,11 +191,6 @@ fn watch(app: &AppHandle) {
         let now = now_ms();
         let mut list = Vec::new();
         if let Some(dir) = &downloads {
-            let finished_file = |name: &str| {
-                dir.join(name)
-                    .metadata()
-                    .is_ok_and(|m| m.is_file() && m.len() > 0)
-            };
             let found = partials(dir);
             for p in &found {
                 if seen_files.insert(p.file.clone()) {
@@ -182,7 +198,9 @@ fn watch(app: &AppHandle) {
                 }
             }
             seen_files.retain(|file| found.iter().any(|p| &p.file == file));
-            let (active, finished) = browser.update(now, found, finished_file);
+            let (active, finished) = browser.update(now, found, |temp, created| {
+                resolve_finished(dir, temp, created)
+            });
             list.extend(active);
             for name in finished {
                 let path = dir.join(&name).display().to_string();

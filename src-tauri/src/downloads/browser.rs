@@ -1,8 +1,12 @@
 //! Browser downloads, seen as temporary files being written in the downloads
-//! folder: Chromium browsers (Chrome, Edge, Yandex, Opera) write
-//! `name.crdownload`, Firefox writes `name.part` (next to an empty `name`
-//! placeholder). Browsers do not reveal the final size, so only bytes and speed
-//! are known.
+//! folder: Chromium browsers (Chrome, Edge, Opera) write `name.crdownload`,
+//! Yandex Browser writes `Не подтверждено 123456.~`, Firefox writes
+//! `name.part` (next to an empty `name` placeholder). Browsers do not reveal
+//! the final size, so only bytes and speed are known.
+//!
+//! A temporary file named "Unconfirmed 123456" / "Не подтверждено 123456" is
+//! renamed to a different name at the end; the finished file is then found by
+//! its creation time, which a rename keeps.
 //!
 //! A file counts as active while it grows *or* its modification time moves:
 //! Chromium's parallel downloading writes several ranges at once, so the file
@@ -12,7 +16,7 @@ use std::collections::HashMap;
 
 use super::{Download, Source};
 
-const SUFFIXES: [&str; 2] = [".crdownload", ".part"];
+const SUFFIXES: [&str; 3] = [".crdownload", ".part", ".~"];
 /// A temporary file that has not grown for this long is paused or abandoned.
 const STALL_MS: i64 = 30_000;
 /// Weight of the newest sample in the smoothed speed.
@@ -24,6 +28,8 @@ pub struct Partial {
     pub size: u64,
     /// Last write, Unix ms.
     pub modified: i64,
+    /// Creation, Unix ms (kept when the browser renames the finished file).
+    pub created: i64,
 }
 
 /// `report.pdf.crdownload` → `report.pdf`; `None` for other files.
@@ -37,8 +43,17 @@ pub fn final_name(file: &str) -> Option<&str> {
     })
 }
 
+/// "Unconfirmed 123456" / "Не подтверждено 942813": the real name comes later.
+pub fn is_unconfirmed(name: &str) -> bool {
+    !name.contains('.')
+        && name
+            .rsplit_once(' ')
+            .is_some_and(|(_, n)| n.len() >= 4 && n.chars().all(|c| c.is_ascii_digit()))
+}
+
 struct Track {
     size: u64,
+    created: i64,
     at: i64,
     modified: i64,
     /// When the file was last written to; `None` while it looks abandoned.
@@ -53,19 +68,20 @@ pub struct BrowserTracker {
 
 impl BrowserTracker {
     /// Takes a new look at the folder. Returns the downloads in progress and the
-    /// final names of those that just finished (`finished_file` tells whether the
-    /// final file exists with content).
+    /// names of those that just finished: `resolve(temporary file, created)`
+    /// finds the finished file, or `None` if the download was cancelled.
     pub fn update(
         &mut self,
         now: i64,
         partials: Vec<Partial>,
-        finished_file: impl Fn(&str) -> bool,
+        resolve: impl Fn(&str, i64) -> Option<String>,
     ) -> (Vec<Download>, Vec<String>) {
         let mut seen = HashMap::with_capacity(partials.len());
         for Partial {
             file,
             size,
             modified,
+            created,
         } in partials
         {
             let track = match self.tracks.remove(&file) {
@@ -80,6 +96,7 @@ impl BrowserTracker {
                     };
                     Track {
                         size,
+                        created,
                         at: now,
                         modified,
                         active_at: Some(now),
@@ -89,6 +106,7 @@ impl BrowserTracker {
                 // Written to without growing (parallel ranges filling in).
                 Some(prev) if modified != prev.modified => Track {
                     size,
+                    created,
                     at: now,
                     modified,
                     active_at: Some(now),
@@ -103,6 +121,7 @@ impl BrowserTracker {
                 // already running when the island started); old leftovers are not.
                 None => Track {
                     size,
+                    created,
                     at: now,
                     modified,
                     active_at: (now - modified < STALL_MS).then_some(modified),
@@ -117,9 +136,7 @@ impl BrowserTracker {
             .tracks
             .iter()
             .filter(|(_, t)| t.active_at.is_some())
-            .filter_map(|(file, _)| final_name(file))
-            .filter(|name| finished_file(name))
-            .map(str::to_owned)
+            .filter_map(|(file, t)| resolve(file, t.created))
             .collect();
         self.tracks = seen;
 
@@ -130,7 +147,11 @@ impl BrowserTracker {
             .map(|(file, t)| Download {
                 id: format!("browser:{file}"),
                 source: Source::Browser,
-                name: final_name(file).unwrap_or(file).to_owned(),
+                // Empty while the browser has not given the real name yet.
+                name: final_name(file)
+                    .filter(|name| !is_unconfirmed(name))
+                    .unwrap_or_default()
+                    .to_owned(),
                 received: t.size,
                 total: None,
                 speed: t.speed,
@@ -155,7 +176,17 @@ mod tests {
             file: file.into(),
             size,
             modified,
+            created: 42,
         }
+    }
+
+    /// Finishes only `name`, found by stripping the temporary suffix.
+    fn finishes(name: &'static str) -> impl Fn(&str, i64) -> Option<String> {
+        move |temp, _| final_name(temp).filter(|n| *n == name).map(String::from)
+    }
+
+    fn nothing(_: &str, _: i64) -> Option<String> {
+        None
     }
 
     #[test]
@@ -164,6 +195,28 @@ mod tests {
         assert_eq!(final_name("Setup.EXE.PART"), Some("Setup.EXE"));
         assert_eq!(final_name("photo.jpg"), None);
         assert_eq!(final_name(".part"), None);
+        assert_eq!(
+            final_name("Не подтверждено 942813.~"),
+            Some("Не подтверждено 942813")
+        );
+        assert!(is_unconfirmed("Не подтверждено 942813"));
+        assert!(is_unconfirmed("Unconfirmed 123456"));
+        assert!(!is_unconfirmed("Report 2024.pdf"));
+        assert!(!is_unconfirmed("Season 2"));
+    }
+
+    #[test]
+    fn finds_yandex_downloads_renamed_at_the_end() {
+        let mut t = BrowserTracker::default();
+        let temp = "Не подтверждено 942813.~";
+        t.update(0, vec![written(temp, 1000, -1)], nothing);
+        let (active, _) = t.update(1000, vec![written(temp, 5000, 900)], nothing);
+        assert_eq!(active[0].name, "");
+        assert_eq!(active[0].received, 5000);
+        let (_, finished) = t.update(2000, Vec::new(), |file, created| {
+            (file == temp && created == 42).then(|| "Game.zip".to_owned())
+        });
+        assert_eq!(finished, ["Game.zip"]);
     }
 
     #[test]
@@ -173,7 +226,7 @@ mod tests {
         let (active, _) = t.update(
             0,
             vec![part("old.zip.crdownload", 50), part("a.iso.crdownload", 0)],
-            |_| false,
+            nothing,
         );
         assert!(active.is_empty());
         let (active, _) = t.update(
@@ -182,13 +235,13 @@ mod tests {
                 part("old.zip.crdownload", 50),
                 part("a.iso.crdownload", 1_000_000),
             ],
-            |_| false,
+            nothing,
         );
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].name, "a.iso");
         assert_eq!(active[0].received, 1_000_000);
         assert_eq!(active[0].speed, Some(1_000_000.0));
-        let (active, _) = t.update(2000, vec![part("a.iso.crdownload", 1_500_000)], |_| false);
+        let (active, _) = t.update(2000, vec![part("a.iso.crdownload", 1_500_000)], nothing);
         // Smoothed: 0.6 × 1 MB/s + 0.4 × 0.5 MB/s.
         assert!((active[0].speed.unwrap_or(0.0) - 800_000.0).abs() < 1.0);
     }
@@ -196,11 +249,9 @@ mod tests {
     #[test]
     fn hides_stalled_downloads() {
         let mut t = BrowserTracker::default();
-        t.update(0, vec![part("a.iso.crdownload", 0)], |_| false);
-        t.update(1000, vec![part("a.iso.crdownload", 10)], |_| false);
-        let (active, _) = t.update(1000 + STALL_MS, vec![part("a.iso.crdownload", 10)], |_| {
-            false
-        });
+        t.update(0, vec![part("a.iso.crdownload", 0)], nothing);
+        t.update(1000, vec![part("a.iso.crdownload", 10)], nothing);
+        let (active, _) = t.update(1000 + STALL_MS, vec![part("a.iso.crdownload", 10)], nothing);
         assert!(active.is_empty());
     }
 
@@ -210,14 +261,14 @@ mod tests {
         t.update(
             0,
             vec![part("a.iso.crdownload", 0), part("b.zip.part", 0)],
-            |_| false,
+            nothing,
         );
         t.update(
             1000,
             vec![part("a.iso.crdownload", 5), part("b.zip.part", 5)],
-            |_| false,
+            nothing,
         );
-        let (active, finished) = t.update(2000, Vec::new(), |name| name == "a.iso");
+        let (active, finished) = t.update(2000, Vec::new(), finishes("a.iso"));
         assert!(active.is_empty());
         assert_eq!(finished, ["a.iso"]);
     }
@@ -229,16 +280,16 @@ mod tests {
         let (active, _) = t.update(
             10_000,
             vec![written("big.zip.crdownload", 900, 9_500)],
-            |_| false,
+            nothing,
         );
         assert_eq!(active.len(), 1);
         let (active, _) = t.update(
             11_000,
             vec![written("big.zip.crdownload", 900, 10_900)],
-            |_| false,
+            nothing,
         );
         assert_eq!(active[0].received, 900);
-        let (_, finished) = t.update(12_000, Vec::new(), |name| name == "big.zip");
+        let (_, finished) = t.update(12_000, Vec::new(), finishes("big.zip"));
         assert_eq!(finished, ["big.zip"]);
     }
 }
