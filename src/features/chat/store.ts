@@ -25,6 +25,9 @@ interface ChatStore extends ChatState {
 }
 
 const NO_MESSAGES: ChatMessage[] = [];
+/** Startup retries for the first load (Rust may still be setting up). */
+const LOAD_ATTEMPTS = 10;
+const LOAD_RETRY_MS = 300;
 
 export const useChatStore = create<ChatStore>()(() => ({
   messages: NO_MESSAGES,
@@ -76,10 +79,26 @@ export function chooseProvider(provider: ChatProvider): void {
 /** Keeps the conversation in sync with Rust. Mount once. */
 export function useChatSync(): void {
   useEffect(() => {
+    let disposed = false;
     const reload = () => {
       chatGet().then(apply).catch(fail("chat_get"));
     };
-    reload();
+    // At startup the page can ask before Rust has set the chat up: try again a few times.
+    const load = (attempt: number) => {
+      chatGet()
+        .then(apply)
+        .catch((error: unknown) => {
+          if (disposed) return;
+          if (attempt >= LOAD_ATTEMPTS) {
+            reportError("chat_get", error);
+            return;
+          }
+          setTimeout(() => {
+            load(attempt + 1);
+          }, LOAD_RETRY_MS);
+        });
+    };
+    load(1);
     // Another model may mean another provider (and key).
     let model = useSettingsStore.getState().settings?.chatModel;
     const unsubscribeSettings = useSettingsStore.subscribe((s) => {
@@ -106,6 +125,7 @@ export function useChatSync(): void {
       }),
     ];
     return () => {
+      disposed = true;
       unsubscribe.forEach((fn) => {
         fn();
       });

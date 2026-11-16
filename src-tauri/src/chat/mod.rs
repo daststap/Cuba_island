@@ -176,6 +176,7 @@ pub fn start(app: &AppHandle) -> AppResult<()> {
         .ok()
         .and_then(|text| serde_json::from_str::<Vec<Turn>>(&text).ok())
         .unwrap_or_default();
+    log::info!("chat: {} messages loaded", history.len());
     app.manage(Arc::new(ChatShared {
         file,
         history: Mutex::new(history),

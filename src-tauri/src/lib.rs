@@ -45,13 +45,13 @@ fn log_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
         .build()
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Frontend errors go to the log file too (the page console is not visible in releases).
 #[tauri::command]
 fn report_error(context: String, message: String, window: tauri::WebviewWindow) {
     log::error!("[{}] {context}: {message}", window.label());
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let result = tauri::Builder::default()
         // single-instance must be registered first so a second launch exits early.
@@ -123,6 +123,8 @@ pub fn run() {
             log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
             let handle = app.handle();
             let settings = settings::load(handle);
+            // Early: the island page is already loading and asks for the chat right away.
+            chat::start(handle)?;
             window::setup(
                 handle,
                 settings.monitor.clone(),
@@ -140,7 +142,6 @@ pub fn run() {
             claude::start(handle);
             indicators::start(handle);
             downloads::start(handle);
-            chat::start(handle)?;
             tray::create(handle)?;
             Ok(())
         })

@@ -120,6 +120,8 @@ const SHELF: ShelfItem[] = [
 let shelfItems: ShelfItem[] = [];
 let notes: Note[] = [];
 let downloads: Download[] = [];
+/** How many chat_get calls fail first (Rust still starting). */
+let chatNotReady = 0;
 let chat: ChatState = { messages: [], streaming: false, provider: "claude", hasKey: false };
 let hooksInstalled = false;
 let hotkeys = DEFAULT_HOTKEYS;
@@ -139,6 +141,7 @@ describe("Island", () => {
     shelfItems = [];
     notes = [];
     downloads = [];
+    chatNotReady = 0;
     chat = { messages: [], streaming: false, provider: "claude", hasKey: false };
     useChatStore.setState({ ...chat, draft: "", notice: null, loaded: false });
     useDownloadsStore.setState({ items: [], finished: null });
@@ -185,6 +188,11 @@ describe("Island", () => {
         if (cmd === "indicators_get") return { sensors: NO_SENSORS, capsLock: false };
         if (cmd === "downloads_list") return downloads;
         if (cmd === "chat_get") {
+          if (chatNotReady > 0) {
+            chatNotReady -= 1;
+            // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+            return Promise.reject("state not managed");
+          }
           return {
             ...chat,
             provider: settings.chatModel.startsWith("gemini") ? "gemini" : "claude",
@@ -1003,6 +1011,21 @@ describe("Island", () => {
         "placeholder",
         "AIza…",
       );
+    });
+
+    it("shows the saved conversation even if Rust is still starting", async () => {
+      chatNotReady = 2;
+      chat = {
+        messages: [
+          { role: "user", text: "Привет" },
+          { role: "assistant", text: "Здравствуйте!" },
+        ],
+        streaming: false,
+        provider: "claude",
+        hasKey: true,
+      };
+      openChat();
+      expect(await screen.findByText("Здравствуйте!", {}, { timeout: 3000 })).toBeInTheDocument();
     });
 
     it("sends a message and streams the answer", async () => {
