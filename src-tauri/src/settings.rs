@@ -37,6 +37,10 @@ pub struct Settings {
     pub downloads: bool,
     /// Model for the AI chat (one of `chat::MODELS`).
     pub chat_model: String,
+    /// Screen edge the island is attached to.
+    pub edge: window::Edge,
+    /// Position along that edge, 0–1 (0.5 = middle).
+    pub edge_offset: f64,
     /// Windows notifications in the island.
     pub notifications: bool,
     /// Apps whose notifications are not shown (display names).
@@ -63,6 +67,8 @@ impl Default for Settings {
             caps_peek: true,
             downloads: true,
             chat_model: crate::chat::MODELS[0].to_owned(),
+            edge: window::Edge::Top,
+            edge_offset: 0.5,
             notifications: true,
             notifications_muted: Vec::new(),
             opacity: 1.0,
@@ -75,6 +81,15 @@ pub const HISTORY_LIMITS: std::ops::RangeInclusive<u32> = 50..=5000;
 pub const OPACITY: std::ops::RangeInclusive<f64> = 0.5..=1.0;
 
 impl Settings {
+    /// Where the island window goes.
+    pub fn display(&self) -> window::Display {
+        window::Display {
+            monitor: self.monitor.clone(),
+            edge: self.edge,
+            offset: self.edge_offset,
+        }
+    }
+
     pub fn hotkeys(&self) -> hotkeys::Keys<'_> {
         hotkeys::Keys {
             clipboard: &self.clipboard_hotkey,
@@ -94,6 +109,11 @@ impl Settings {
         if !OPACITY.contains(&self.opacity) {
             return Err(AppError::InvalidArgument(
                 "прозрачность должна быть от 50 до 100%".into(),
+            ));
+        }
+        if !(0.0..=1.0).contains(&self.edge_offset) {
+            return Err(AppError::InvalidArgument(
+                "положение на краю должно быть от 0 до 1".into(),
             ));
         }
         if !crate::chat::MODELS.contains(&self.chat_model.as_str()) {
@@ -204,8 +224,8 @@ fn apply(app: &AppHandle, old: &Settings, new: &Settings) -> AppResult<()> {
         };
         result.map_err(|err| AppError::Internal(format!("автозапуск: {err}")))?;
     }
-    if old.monitor != new.monitor || old.hide_in_fullscreen != new.hide_in_fullscreen {
-        window::apply_display(app, new.monitor.clone(), new.hide_in_fullscreen)?;
+    if old.display() != new.display() || old.hide_in_fullscreen != new.hide_in_fullscreen {
+        window::apply_display(app, new.display(), new.hide_in_fullscreen)?;
     }
     if old.history_limit != new.history_limit {
         clipboard::set_history_limit(app, new.history_limit as usize)?;
@@ -221,15 +241,28 @@ pub fn settings_get(state: State<'_, SettingsState>) -> AppResult<Settings> {
 /// Updates some settings; returns the full new settings. Nothing is saved if
 /// applying fails (e.g. a hotkey is taken by another app).
 #[tauri::command]
-pub fn settings_set(
-    patch: Value,
-    app: AppHandle,
-    state: State<'_, SettingsState>,
-) -> AppResult<Settings> {
+pub fn settings_set(patch: Value, app: AppHandle) -> AppResult<Settings> {
+    update(&app, &patch)
+}
+
+/// Saves where the island was dropped: monitor, edge and position along it.
+pub fn set_placement(
+    app: &AppHandle,
+    monitor: Option<String>,
+    edge: window::Edge,
+    offset: f64,
+) -> AppResult<()> {
+    let patch = serde_json::json!({ "monitor": monitor, "edge": edge, "edgeOffset": offset });
+    update(app, &patch).map(|_| ())
+}
+
+/// Applies, saves and announces a partial update.
+fn update(app: &AppHandle, patch: &Value) -> AppResult<Settings> {
+    let state = app.state::<SettingsState>();
     let mut current = state.lock().unwrap_or_else(PoisonError::into_inner);
-    let next = current.merged(&patch)?;
-    apply(&app, &current, &next)?;
-    save(&app, &next)?;
+    let next = current.merged(patch)?;
+    apply(app, &current, &next)?;
+    save(app, &next)?;
     let notifications_changed = current.notifications != next.notifications
         || current.notifications_muted != next.notifications_muted;
     *current = next.clone();
@@ -238,7 +271,7 @@ pub fn settings_set(
         log::warn!("failed to emit settings://changed: {err}");
     }
     if notifications_changed {
-        crate::notifications::refresh(&app);
+        crate::notifications::refresh(app);
     }
     Ok(next)
 }

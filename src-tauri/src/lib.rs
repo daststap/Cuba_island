@@ -72,6 +72,8 @@ pub fn run() {
             report_error,
             window::set_island_rect,
             window::set_input_mode,
+            window::island_placement,
+            window::island_drag_start,
             system::get_battery,
             media::media_get_state,
             media::media_command,
@@ -130,11 +132,7 @@ pub fn run() {
             let settings = settings::load(handle);
             // Early: the island page is already loading and asks for the chat right away.
             chat::start(handle)?;
-            window::setup(
-                handle,
-                settings.monitor.clone(),
-                settings.hide_in_fullscreen,
-            )?;
+            window::setup(handle, settings.display(), settings.hide_in_fullscreen)?;
             system::spawn_battery_watcher(handle.clone());
             media::start(handle);
             let db = storage::init(handle)?;
