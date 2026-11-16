@@ -17,6 +17,17 @@ describe("islandReducer", () => {
     });
   });
 
+  it("reopens on the tab it was last open on", () => {
+    expect(islandReducer(compact, { type: "expand" }, "chat")).toEqual({
+      mode: "expanded",
+      tab: "chat",
+    });
+    expect(islandReducer(compact, { type: "expand", tab: "shelf" }, "chat")).toEqual({
+      mode: "expanded",
+      tab: "shelf",
+    });
+  });
+
   it("keeps the current tab when expanding again without a tab", () => {
     const clipboard: IslandState = { mode: "expanded", tab: "clipboard" };
     expect(islandReducer(clipboard, { type: "expand" })).toBe(clipboard);

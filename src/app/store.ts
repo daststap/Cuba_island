@@ -6,6 +6,7 @@ import {
   type IslandEvent,
   type IslandState,
   type PeekKind,
+  type Tab,
 } from "./islandMachine";
 
 /** How long a peek stays open (PLAN.md §4.6). */
@@ -23,6 +24,8 @@ export const PEEK_DURATION_MS: Record<PeekKind, number> = {
 
 interface IslandStore {
   state: IslandState;
+  /** The tab the panel was last open on; reopening goes back to it. */
+  lastTab: Tab;
   /** The island has keyboard focus (search field / hotkey). */
   inputMode: boolean;
   /** A short message (errors, hotkey conflicts): a peek when compact, a banner when open. */
@@ -42,6 +45,7 @@ let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 export const useIslandStore = create<IslandStore>()((set, get) => ({
   state: initialIslandState,
+  lastTab: "home",
   inputMode: false,
   toast: null,
   showToast: (message) => {
@@ -54,8 +58,9 @@ export const useIslandStore = create<IslandStore>()((set, get) => ({
   },
   dispatch: (event) => {
     set((store) => {
-      const next = islandReducer(store.state, event);
-      return next === store.state ? store : { state: next };
+      const next = islandReducer(store.state, event, store.lastTab);
+      if (next === store.state) return store;
+      return next.mode === "expanded" ? { state: next, lastTab: next.tab } : { state: next };
     });
   },
   peek: (kind) => {

@@ -141,7 +141,12 @@ const calls: { cmd: string; args: unknown }[] = [];
 
 describe("Island", () => {
   beforeEach(() => {
-    useIslandStore.setState({ state: initialIslandState, inputMode: false, toast: null });
+    useIslandStore.setState({
+      state: initialIslandState,
+      lastTab: "home",
+      inputMode: false,
+      toast: null,
+    });
     useMediaStore.setState({ media: null });
     hotkeys = DEFAULT_HOTKEYS;
     settings = DEFAULT_SETTINGS;
