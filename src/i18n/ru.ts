@@ -11,6 +11,7 @@ export const ru = {
     settings: "Настройки",
   },
   tabsLabel: "Разделы острова",
+  dragHint: "Потяните, чтобы переместить остров",
   battery: {
     label: (percent: number) => `Батарея ${String(percent)}%`,
     charging: "заряжается",

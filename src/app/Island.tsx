@@ -240,7 +240,9 @@ export function Island() {
         onPointerMove={onPointerMove}
         onPointerUp={endPress}
         onPointerLeave={endPress}
-        className="absolute overflow-hidden bg-[var(--island-bg)] text-[var(--island-fg)] transition-shadow duration-700"
+        className={`absolute overflow-hidden bg-[var(--island-bg)] text-[var(--island-fg)] transition-shadow duration-700 ${
+          placement?.dragging ? "cursor-grabbing" : state.mode === "expanded" ? "" : "cursor-grab"
+        }`}
         style={
           {
             boxShadow: shadow,
@@ -343,6 +345,15 @@ function ExpandedView({
   const player = tab === "home" && media;
   return (
     <div className="flex h-full flex-col px-6 pt-3 pb-6">
+      {/* The grip shows where to take the panel to move it (like a sheet on an iPhone). */}
+      <div
+        data-drag-handle
+        data-testid="drag-grip"
+        title={ru.dragHint}
+        className="group absolute top-0 left-1/2 flex h-3 w-24 -translate-x-1/2 cursor-grab items-center justify-center active:cursor-grabbing"
+      >
+        <span className="h-1 w-9 rounded-full bg-white/20 transition-colors group-hover:bg-white/50" />
+      </div>
       <div data-drag-handle className="relative flex cursor-grab items-center justify-center">
         <div className="absolute left-0 flex items-center gap-1.5 text-xs text-[var(--island-muted)]">
           {player && <Clock className="font-semibold text-[var(--island-fg)]" />}
