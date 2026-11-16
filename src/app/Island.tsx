@@ -7,6 +7,12 @@ import { ClipboardPeek, ClipboardTab } from "../features/clipboard/ClipboardTab"
 import { useClipboardSync } from "../features/clipboard/store";
 import { Clock, LongDate } from "../features/clock/Clock";
 import { useIndicatorsSync } from "../features/indicators/store";
+import {
+  useDownloadsStore,
+  useDownloadsSync,
+  useVisibleDownloads,
+} from "../features/downloads/store";
+import { DownloadPeek, DownloadsCompact, DownloadsList } from "../features/downloads/views";
 import { ScreenshotButton } from "../features/screenshot/ScreenshotButton";
 import { CapsPeek, PrivacyDots, SensorsLine } from "../features/indicators/views";
 import { LauncherTab } from "../features/launcher/LauncherTab";
@@ -54,6 +60,7 @@ export function Island() {
   useShelfSync();
   useNotesSync();
   useIndicatorsSync();
+  useDownloadsSync();
   useSettingsSync(announceUpdate);
   const state = useIslandStore((s) => s.state);
   const dispatch = useIslandStore((s) => s.dispatch);
@@ -61,6 +68,7 @@ export function Island() {
   const toast = useIslandStore((s) => s.toast);
   const claudeAttention = useClaudeStore((s) => s.attention);
   const alert = useNotesStore((s) => s.alert);
+  const finishedDownload = useDownloadsStore((s) => s.finished);
   const opacity = useSettingsStore((s) => s.settings?.opacity ?? 1);
   const onboarding = useSettingsStore((s) => s.settings !== null && !s.settings.onboarded);
   const glow = useCoverColor(media?.cover ?? null);
@@ -73,7 +81,8 @@ export function Island() {
     (peekKind === "media" && !media) ||
     (peekKind === "toast" && !toast) ||
     (peekKind === "claude" && !claudeAttention) ||
-    (peekKind === "alert" && !alert);
+    (peekKind === "alert" && !alert) ||
+    (peekKind === "download" && !finishedDownload);
   const mode = stale ? "compact" : state.mode;
   const shape =
     mode === "expanded"
@@ -85,7 +94,7 @@ export function Island() {
             ? SHAPES.capsPeek
             : peekKind === "toast"
               ? SHAPES.toastPeek
-              : peekKind === "claude" || peekKind === "alert"
+              : peekKind === "claude" || peekKind === "alert" || peekKind === "download"
                 ? SHAPES.claudePeek
                 : SHAPES.peek
         : SHAPES.compact;
@@ -121,6 +130,8 @@ export function Island() {
     content = <ClaudePeek />;
   } else if (mode === "peek" && peekKind === "alert") {
     content = <AlertPeek />;
+  } else if (mode === "peek" && peekKind === "download") {
+    content = <DownloadPeek />;
   } else if (mode === "peek" && peekKind === "caps") {
     content = <CapsPeek />;
   } else if (mode === "peek" && peekKind === "clipboard") {
@@ -184,10 +195,13 @@ export function Island() {
 
 function CompactView({ mode, media }: { mode: IslandState["mode"]; media: MediaState | null }) {
   const timerActive = useTimerActive();
+  const downloads = useVisibleDownloads();
   return (
     <div role="status" aria-label={ru.appName} data-mode={mode} className="relative h-full">
       {timerActive ? (
         <TimerCompact />
+      ) : downloads.length > 0 ? (
+        <DownloadsCompact items={downloads} />
       ) : media ? (
         <MediaCompact media={media} />
       ) : (
@@ -259,6 +273,7 @@ function ExpandedView({
             <MediaPlayer media={media} />
             <div className="mt-3 flex w-full flex-col gap-2">
               <SensorsLine />
+              <DownloadsList />
               <ClaudeSessions />
             </div>
           </>
@@ -279,6 +294,7 @@ function ExpandedView({
             </div>
             <div className="mt-4 flex w-full flex-col gap-3">
               <SensorsLine />
+              <DownloadsList />
               <ClaudeSessions />
             </div>
           </>

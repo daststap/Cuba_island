@@ -5,6 +5,8 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   Battery,
+  Download,
+  FinishedDownload,
   ClaudeSession,
   ClipItem,
   MediaState,
@@ -43,6 +45,8 @@ interface EventMap {
   "notes://timer-done": null;
   "indicators://sensors": Sensors;
   "indicators://caps-lock": boolean;
+  "downloads://changed": Download[];
+  "downloads://finished": FinishedDownload;
 }
 
 function subscribe<K extends keyof EventMap>(
@@ -114,3 +118,9 @@ export const onSensors = (handler: (sensors: Sensors) => void) =>
 
 export const onCapsLock = (handler: (on: boolean) => void) =>
   subscribe("indicators://caps-lock", handler);
+
+export const onDownloads = (handler: (items: Download[]) => void) =>
+  subscribe("downloads://changed", handler);
+
+export const onDownloadFinished = (handler: (item: FinishedDownload) => void) =>
+  subscribe("downloads://finished", handler);

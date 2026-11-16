@@ -169,6 +169,8 @@ export interface Settings {
   privacyDots: boolean;
   /** A short peek when Caps Lock is toggled. */
   capsPeek: boolean;
+  /** Downloads in the pill and on the home tab. */
+  downloads: boolean;
   /** 0.5–1 */
   opacity: number;
   onboarded: boolean;
@@ -405,4 +407,33 @@ export function screenshotCopy(image: Uint8Array): Promise<void> {
 /** Closes the overlay without copying. */
 export function screenshotClose(): Promise<void> {
   return invoke("screenshot_close");
+}
+
+/** Mirrors `downloads::Download`. */
+export interface Download {
+  id: string;
+  source: "browser" | "steam";
+  name: string;
+  received: number;
+  /** null when unknown (browsers do not reveal it). */
+  total: number | null;
+  /** Bytes per second; null until measured. */
+  speed: number | null;
+}
+
+/** Mirrors `downloads::Finished`. */
+export interface FinishedDownload {
+  source: "browser" | "steam";
+  name: string;
+  /** The file, for "show in folder" (browser downloads only). */
+  path: string | null;
+}
+
+export function downloadsList(): Promise<Download[]> {
+  return invoke("downloads_list");
+}
+
+/** Opens Explorer with the file selected. */
+export function downloadsReveal(path: string): Promise<void> {
+  return invoke("downloads_reveal", { path });
 }

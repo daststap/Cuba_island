@@ -7,9 +7,11 @@ import { ru } from "../i18n/ru";
 import { useSettingsStore } from "../features/settings/store";
 import { useClaudeStore } from "../features/claude/store";
 import { SHELF_DROP_MESSAGE, useShelfStore } from "../features/shelf/store";
+import { useDownloadsStore } from "../features/downloads/store";
 import { NO_SENSORS, useIndicatorsStore } from "../features/indicators/store";
 import { DEFAULT_PICKED_MS, IDLE_TIMER, useNotesStore } from "../features/notes/store";
 import type {
+  Download,
   Note,
   ShelfItem,
   ClaudeSession,
@@ -82,6 +84,7 @@ const DEFAULT_SETTINGS: Settings = {
   copyPeek: true,
   privacyDots: true,
   capsPeek: true,
+  downloads: true,
   opacity: 1,
   onboarded: true,
 };
@@ -112,6 +115,7 @@ const SHELF: ShelfItem[] = [
 ];
 let shelfItems: ShelfItem[] = [];
 let notes: Note[] = [];
+let downloads: Download[] = [];
 let hooksInstalled = false;
 let hotkeys = DEFAULT_HOTKEYS;
 let launcherResults = RESULTS;
@@ -129,6 +133,8 @@ describe("Island", () => {
     claudeSessions = [];
     shelfItems = [];
     notes = [];
+    downloads = [];
+    useDownloadsStore.setState({ items: [], finished: null });
     useNotesStore.setState({
       notes: [],
       timer: IDLE_TIMER,
@@ -170,6 +176,7 @@ describe("Island", () => {
         }
         if (cmd === "shelf_drag_out") return true;
         if (cmd === "indicators_get") return { sensors: NO_SENSORS, capsLock: false };
+        if (cmd === "downloads_list") return downloads;
         if (cmd === "claude_hooks_status" || cmd === "claude_hooks_set") {
           hooksInstalled =
             cmd === "claude_hooks_set" ? (args as { enabled: boolean }).enabled : hooksInstalled;
@@ -873,6 +880,70 @@ describe("Island", () => {
     expect(useIslandStore.getState().state.mode).toBe("compact");
     await vi.waitFor(() => {
       expect(calls.some((c) => c.cmd === "screenshot_start")).toBe(true);
+    });
+  });
+
+  describe("downloads", () => {
+    const game: Download = {
+      id: "steam:7",
+      source: "steam",
+      name: "Northern Trails",
+      received: 250,
+      total: 1000,
+      speed: 50,
+    };
+    const file: Download = {
+      id: "browser:a.zip.crdownload",
+      source: "browser",
+      name: "a.zip",
+      received: 3 * 1024 * 1024,
+      total: null,
+      speed: 1024 * 1024,
+    };
+
+    it("shows progress in the pill and details on the home tab", async () => {
+      downloads = [game, file];
+      render(<Island />);
+      const ring = await screen.findByRole("progressbar", { name: ru.downloads.progress });
+      expect(ring).toHaveAttribute("aria-valuenow", "25");
+      expect(ring).toHaveTextContent("25%");
+      act(() => {
+        useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
+      });
+      const list = screen.getByRole("list", { name: ru.downloads.list });
+      expect(list).toHaveTextContent("Northern Trails");
+      expect(list).toHaveTextContent("ещё 15 с");
+      expect(list).toHaveTextContent("3 МБ · 1 МБ/с");
+    });
+
+    it("hides downloads when turned off in settings", async () => {
+      settings = { ...DEFAULT_SETTINGS, downloads: false };
+      downloads = [game];
+      render(<Island />);
+      await vi.waitFor(() => {
+        expect(useSettingsStore.getState().settings?.downloads).toBe(false);
+      });
+      expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    });
+
+    it("peeks when a download finishes and shows it in Explorer on click", async () => {
+      render(<Island />);
+      await act(async () => {
+        await emit("downloads://finished", {
+          source: "browser",
+          name: "a.zip",
+          path: "D:/download/a.zip",
+        });
+      });
+      expect(useIslandStore.getState().state).toEqual({ mode: "peek", kind: "download" });
+      fireEvent.click(screen.getByRole("button", { name: /a.zip/ }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "downloads_reveal",
+          args: { path: "D:/download/a.zip" },
+        });
+      });
+      expect(useIslandStore.getState().state.mode).toBe("compact");
     });
   });
 });

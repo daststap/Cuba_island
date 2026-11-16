@@ -328,6 +328,13 @@ function SettingsForm({ settings }: { settings: Settings }) {
           set({ capsPeek });
         }}
       />
+      <Toggle
+        label={ru.settings.downloads}
+        checked={settings.downloads}
+        onChange={(downloads) => {
+          set({ downloads });
+        }}
+      />
       <Row label={ru.settings.opacity}>
         <input
           type="range"

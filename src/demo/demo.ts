@@ -29,6 +29,7 @@ export const SCENES = [
   "timer",
   "caps",
   "snip",
+  "downloads",
 ] as const;
 export type Scene = (typeof SCENES)[number];
 
@@ -65,6 +66,7 @@ const SETTINGS: Settings = {
   copyPeek: true,
   privacyDots: true,
   capsPeek: true,
+  downloads: true,
   opacity: 1,
   onboarded: true,
 };
@@ -192,6 +194,25 @@ const LAUNCH: LaunchResult[] = [
   { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
 ];
 
+const DOWNLOADS = [
+  {
+    id: "steam:1",
+    source: "steam",
+    name: "Northern Trails",
+    received: 6_400_000_000,
+    total: 11_200_000_000,
+    speed: 38_000_000,
+  },
+  {
+    id: "browser:report.pdf.crdownload",
+    source: "browser",
+    name: "Отчёт за ноябрь.pdf",
+    received: 18_300_000,
+    total: null,
+    speed: 2_300_000,
+  },
+];
+
 /** A fake desktop for the screenshot overlay demo (`?demo=snip&snip`). */
 function fakeDesktop(): ArrayBuffer {
   const width = Math.round(window.innerWidth * window.devicePixelRatio);
@@ -288,6 +309,8 @@ export async function setupDemo(scene: Scene): Promise<void> {
           return [];
         case "monitors_list":
           return [];
+        case "downloads_list":
+          return scene === "home" || scene === "downloads" ? DOWNLOADS : [];
         case "screenshot_frame":
           return fakeDesktop();
         case "update_check":
@@ -308,6 +331,7 @@ export async function setupDemo(scene: Scene): Promise<void> {
     case "compact":
     case "music":
     case "timer":
+    case "downloads":
       break;
     case "caps":
       useIndicatorsStore.setState({ capsLock: true });
