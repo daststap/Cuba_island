@@ -58,6 +58,8 @@ pub enum ResultKind {
     Command,
     Calc,
     Web,
+    /// Ask Claude in the chat tab (handled on the frontend).
+    Ask,
 }
 
 /// One row of results. Mirrored in `src/ipc/commands.ts`.
@@ -144,7 +146,7 @@ fn build_results(
             name: words,
             keywords: "",
         }));
-    let room = MAX_RESULTS - results.len() - 1; // keep the last row for web search
+    let room = MAX_RESULTS - results.len() - 2; // keep the last rows for web search and Claude
     for id in search::rank(query, candidates, launches, room) {
         if let Some(app) = apps.iter().find(|app| app.id == id) {
             results.push(LaunchResult {
@@ -166,6 +168,12 @@ fn build_results(
     results.push(LaunchResult {
         id: format!("web:{query}"),
         kind: ResultKind::Web,
+        title: query.to_owned(),
+        icon_path: None,
+    });
+    results.push(LaunchResult {
+        id: format!("ask:{query}"),
+        kind: ResultKind::Ask,
         title: query.to_owned(),
         icon_path: None,
     });
@@ -322,13 +330,16 @@ mod tests {
     }
 
     #[test]
-    fn calculator_first_and_web_search_last() {
+    fn calculator_first_then_web_search_and_claude_last() {
         let results = build_results("2+2*2", &apps(), &HashMap::new());
         assert_eq!(results[0].kind, ResultKind::Calc);
         assert_eq!(results[0].title, "6");
         assert_eq!(results[0].id, "calc:6");
-        let last = results.last().unwrap();
-        assert_eq!((last.kind, last.title.as_str()), (ResultKind::Web, "2+2*2"));
+        let [.., web, ask] = results.as_slice() else {
+            panic!("too few results");
+        };
+        assert_eq!((web.kind, web.title.as_str()), (ResultKind::Web, "2+2*2"));
+        assert_eq!((ask.kind, ask.id.as_str()), (ResultKind::Ask, "ask:2+2*2"));
     }
 
     #[test]

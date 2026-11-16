@@ -26,7 +26,7 @@ Tauri 2 · Rust stable (edition 2021) · `windows` crate · React 19 + TS strict
 - Every command returns `AppResult<T>`; IPC types are mirrored in `src/ipc/*.ts`. Event names: `domain://event`.
 - No `unwrap()`/`expect()` in production code (clippy denies them; allowed in tests). Every `unsafe` block has a `// SAFETY:` comment.
 - Rust modules expose a small public API (2–5 functions). Heavy work off the main thread; no polling faster than 16 ms.
-- No network requests except update checks and opening a browser search.
+- No network requests except update checks, opening a browser search, and AI chat messages that the user sends to the provider they chose: `api.anthropic.com` (Claude) or `generativelanguage.googleapis.com` (Gemini) (stage 6, approved by the user). API keys stay in Rust (Windows Credential Manager).
 
 ## Checks (all must pass)
 

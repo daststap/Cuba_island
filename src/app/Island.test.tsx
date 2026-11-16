@@ -7,10 +7,12 @@ import { ru } from "../i18n/ru";
 import { useSettingsStore } from "../features/settings/store";
 import { useClaudeStore } from "../features/claude/store";
 import { SHELF_DROP_MESSAGE, useShelfStore } from "../features/shelf/store";
+import { useChatStore } from "../features/chat/store";
 import { useDownloadsStore } from "../features/downloads/store";
 import { NO_SENSORS, useIndicatorsStore } from "../features/indicators/store";
 import { DEFAULT_PICKED_MS, IDLE_TIMER, useNotesStore } from "../features/notes/store";
 import type {
+  ChatState,
   Download,
   Note,
   ShelfItem,
@@ -70,6 +72,7 @@ const RESULTS: LaunchResult[] = [
   { id: "app:Chrome", kind: "app", title: "Google Chrome", iconPath: null },
   { id: "cmd:lock", kind: "command", title: "", iconPath: null },
   { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
+  { id: "ask:2+2*2", kind: "ask", title: "2+2*2", iconPath: null },
 ];
 
 const DEFAULT_SETTINGS: Settings = {
@@ -85,6 +88,7 @@ const DEFAULT_SETTINGS: Settings = {
   privacyDots: true,
   capsPeek: true,
   downloads: true,
+  chatModel: "claude-haiku-5-5",
   opacity: 1,
   onboarded: true,
 };
@@ -116,6 +120,9 @@ const SHELF: ShelfItem[] = [
 let shelfItems: ShelfItem[] = [];
 let notes: Note[] = [];
 let downloads: Download[] = [];
+/** How many chat_get calls fail first (Rust still starting). */
+let chatNotReady = 0;
+let chat: ChatState = { messages: [], streaming: false, provider: "claude", hasKey: false };
 let hooksInstalled = false;
 let hotkeys = DEFAULT_HOTKEYS;
 let launcherResults = RESULTS;
@@ -134,6 +141,9 @@ describe("Island", () => {
     shelfItems = [];
     notes = [];
     downloads = [];
+    chatNotReady = 0;
+    chat = { messages: [], streaming: false, provider: "claude", hasKey: false };
+    useChatStore.setState({ ...chat, draft: "", notice: null, loaded: false });
     useDownloadsStore.setState({ items: [], finished: null });
     useNotesStore.setState({
       notes: [],
@@ -177,6 +187,26 @@ describe("Island", () => {
         if (cmd === "shelf_drag_out") return true;
         if (cmd === "indicators_get") return { sensors: NO_SENSORS, capsLock: false };
         if (cmd === "downloads_list") return downloads;
+        if (cmd === "chat_get") {
+          if (chatNotReady > 0) {
+            chatNotReady -= 1;
+            // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+            return Promise.reject("state not managed");
+          }
+          return {
+            ...chat,
+            provider: settings.chatModel.startsWith("gemini") ? "gemini" : "claude",
+          };
+        }
+        if (cmd === "chat_set_key") {
+          chat = { ...chat, hasKey: true };
+          return chat;
+        }
+        if (cmd === "chat_send") {
+          const text = (args as { text: string }).text;
+          chat = { ...chat, streaming: true, messages: [...chat.messages, { role: "user", text }] };
+          return chat;
+        }
         if (cmd === "claude_hooks_status" || cmd === "claude_hooks_set") {
           hooksInstalled =
             cmd === "claude_hooks_set" ? (args as { enabled: boolean }).enabled : hooksInstalled;
@@ -944,6 +974,122 @@ describe("Island", () => {
         });
       });
       expect(useIslandStore.getState().state.mode).toBe("compact");
+    });
+  });
+
+  describe("chat", () => {
+    const openChat = () => {
+      useIslandStore.setState({ state: { mode: "expanded", tab: "chat" } });
+      render(<Island />);
+    };
+
+    it("asks for the API key first and saves it", async () => {
+      openChat();
+      const input = await screen.findByLabelText(ru.settings.apiKey("Claude"));
+      fireEvent.change(input, { target: { value: "sk-ant-test" } });
+      fireEvent.click(screen.getByRole("button", { name: ru.chat.saveKey }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "chat_set_key",
+          args: { provider: "claude", key: "sk-ant-test" },
+        });
+      });
+      expect(await screen.findByRole("textbox", { name: ru.chat.input })).toBeInTheDocument();
+    });
+
+    it("switches to free Gemini and warns about its terms", async () => {
+      openChat();
+      fireEvent.click(await screen.findByRole("radio", { name: /Gemini/ }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "settings_set",
+          args: { patch: { chatModel: "gemini-3.5-flash-lite" } },
+        });
+      });
+      expect(await screen.findByText(ru.chat.geminiNote)).toBeInTheDocument();
+      expect(screen.getByLabelText(ru.settings.apiKey("Gemini"))).toHaveAttribute(
+        "placeholder",
+        "AIza…",
+      );
+    });
+
+    it("shows the saved conversation even if Rust is still starting", async () => {
+      chatNotReady = 2;
+      chat = {
+        messages: [
+          { role: "user", text: "Привет" },
+          { role: "assistant", text: "Здравствуйте!" },
+        ],
+        streaming: false,
+        provider: "claude",
+        hasKey: true,
+      };
+      openChat();
+      expect(await screen.findByText("Здравствуйте!", {}, { timeout: 3000 })).toBeInTheDocument();
+    });
+
+    it("sends a message and streams the answer", async () => {
+      chat = { messages: [], streaming: false, provider: "claude", hasKey: true };
+      openChat();
+      const input = await screen.findByRole("textbox", { name: ru.chat.input });
+      fireEvent.change(input, { target: { value: "Столица Франции?" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "chat_send", args: { text: "Столица Франции?" } });
+      });
+      expect(await screen.findByText("Столица Франции?")).toBeInTheDocument();
+      await act(async () => {
+        await emit("chat://delta", "Па");
+        await emit("chat://delta", "риж");
+      });
+      expect(screen.getByText("Париж")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: ru.chat.stop })).toBeInTheDocument();
+      chat = {
+        messages: [...chat.messages, { role: "assistant", text: "Париж" }],
+        streaming: false,
+        provider: "claude",
+        hasKey: true,
+      };
+      await act(async () => {
+        await emit("chat://done", { error: null, refused: false, truncated: false });
+      });
+      await vi.waitFor(() => {
+        expect(screen.getByRole("button", { name: ru.chat.send })).toBeInTheDocument();
+      });
+      expect(screen.getAllByText("Париж")).toHaveLength(1);
+    });
+
+    it("shows what went wrong", async () => {
+      chat = {
+        messages: [{ role: "user", text: "Привет" }],
+        streaming: true,
+        provider: "claude",
+        hasKey: true,
+      };
+      openChat();
+      await screen.findByText("Привет");
+      chat = { ...chat, streaming: false };
+      await act(async () => {
+        await emit("chat://done", {
+          error: "Нет связи с api.anthropic.com",
+          refused: false,
+          truncated: false,
+        });
+      });
+      expect(await screen.findByRole("alert")).toHaveTextContent("Нет связи");
+    });
+
+    it("takes a question from the command line to the chat tab", async () => {
+      chat = { messages: [], streaming: false, provider: "claude", hasKey: true };
+      useIslandStore.setState({ state: { mode: "expanded", tab: "launcher" } });
+      render(<Island />);
+      const input = await screen.findByRole("combobox");
+      fireEvent.change(input, { target: { value: "2+2*2" } });
+      fireEvent.click(await screen.findByText(ru.launcher.askTitle("2+2*2")));
+      expect(useIslandStore.getState().state).toEqual({ mode: "expanded", tab: "chat" });
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "chat_send", args: { text: "2+2*2" } });
+      });
     });
   });
 });

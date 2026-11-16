@@ -30,6 +30,7 @@ export const SCENES = [
   "caps",
   "snip",
   "downloads",
+  "chat",
 ] as const;
 export type Scene = (typeof SCENES)[number];
 
@@ -67,6 +68,7 @@ const SETTINGS: Settings = {
   privacyDots: true,
   capsPeek: true,
   downloads: true,
+  chatModel: "claude-haiku-5-5",
   opacity: 1,
   onboarded: true,
 };
@@ -194,6 +196,16 @@ const LAUNCH: LaunchResult[] = [
   { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
 ];
 
+const CHAT = [
+  { role: "user", text: "Как по-английски «дедлайн перенесли на пятницу»?" },
+  {
+    role: "assistant",
+    text: "The deadline has been moved to Friday.\n\nЕсли нужно мягче, для письма: «We have pushed the deadline back to Friday.»",
+  },
+  { role: "user", text: "Сколько будет 15% от 2400?" },
+  { role: "assistant", text: "360." },
+];
+
 const DOWNLOADS = [
   {
     id: "steam:1",
@@ -309,6 +321,13 @@ export async function setupDemo(scene: Scene): Promise<void> {
           return [];
         case "monitors_list":
           return [];
+        case "chat_get":
+          return {
+            messages: scene === "chat" ? CHAT : [],
+            streaming: false,
+            provider: "claude",
+            hasKey: scene === "chat",
+          };
         case "downloads_list":
           return scene === "home" || scene === "downloads" ? DOWNLOADS : [];
         case "screenshot_frame":
@@ -336,6 +355,9 @@ export async function setupDemo(scene: Scene): Promise<void> {
     case "caps":
       useIndicatorsStore.setState({ capsLock: true });
       store.setState({ state: { mode: "peek", kind: "caps" } });
+      break;
+    case "chat":
+      store.setState({ state: { mode: "expanded", tab: "chat" }, inputMode: true });
       break;
     case "picker":
       store.setState({ state: { mode: "expanded", tab: "notes" }, inputMode: true });

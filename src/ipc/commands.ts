@@ -121,9 +121,9 @@ export function getBattery(): Promise<Battery | null> {
 
 /** Mirrors `launcher::LaunchResult`. */
 export interface LaunchResult {
-  /** `app:…`, `cmd:…`, `calc:…` or `web:…` — passed back to `launcherRun`. */
+  /** `app:…`, `cmd:…`, `calc:…`, `web:…` or `ask:…` — passed back to `launcherRun`. */
   id: string;
-  kind: "app" | "command" | "calc" | "web";
+  kind: "app" | "command" | "calc" | "web" | "ask";
   /** App name, calculator answer or search query (commands are labelled in `ru.ts`). */
   title: string;
   iconPath: string | null;
@@ -171,6 +171,8 @@ export interface Settings {
   capsPeek: boolean;
   /** Downloads in the pill and on the home tab. */
   downloads: boolean;
+  /** One of CHAT_MODELS. */
+  chatModel: string;
   /** 0.5–1 */
   opacity: number;
   onboarded: boolean;
@@ -436,4 +438,57 @@ export function downloadsList(): Promise<Download[]> {
 /** Opens Explorer with the file selected. */
 export function downloadsReveal(path: string): Promise<void> {
   return invoke("downloads_reveal", { path });
+}
+
+export type ChatProvider = "claude" | "gemini";
+
+/** Models offered for the chat (mirrors `chat::MODELS`); the first of each is its default. */
+export const CHAT_MODELS: Record<ChatProvider, readonly string[]> = {
+  claude: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"],
+  gemini: ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-4-hydrogen"],
+};
+
+/** Mirrors `chat::ChatMessage`. */
+export interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+/** Mirrors `chat::ChatState`. */
+export interface ChatState {
+  messages: ChatMessage[];
+  streaming: boolean;
+  /** Provider of the model chosen in settings. */
+  provider: ChatProvider;
+  /** A key for that provider is saved (the key itself never leaves Rust). */
+  hasKey: boolean;
+}
+
+/** Mirrors `chat::ChatDone`. */
+export interface ChatDone {
+  error: string | null;
+  refused: boolean;
+  truncated: boolean;
+}
+
+export function chatGet(): Promise<ChatState> {
+  return invoke("chat_get");
+}
+
+/** Sends a message; the reply streams as `chat://delta`, then `chat://done`. */
+export function chatSend(text: string): Promise<ChatState> {
+  return invoke("chat_send", { text });
+}
+
+export function chatStop(): Promise<void> {
+  return invoke("chat_stop");
+}
+
+export function chatNew(): Promise<ChatState> {
+  return invoke("chat_new");
+}
+
+/** Saves a provider's API key in Windows Credential Manager; an empty string removes it. */
+export function chatSetKey(provider: ChatProvider, key: string): Promise<ChatState> {
+  return invoke("chat_set_key", { provider, key });
 }

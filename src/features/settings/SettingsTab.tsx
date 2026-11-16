@@ -3,6 +3,7 @@ import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useIslandStore } from "../../app/store";
 import { ru } from "../../i18n/ru";
 import {
+  CHAT_MODELS,
   clipboardClear,
   hotkeysPause,
   monitorsList,
@@ -15,6 +16,8 @@ import {
 import { ClaudeHooksSetting } from "../claude/views";
 import { useClipboardStore } from "../clipboard/store";
 import { comboFromKeyPress } from "./hotkey";
+import { KeySetup } from "../chat/ChatTab";
+import { saveKey, useChatStore } from "../chat/store";
 import { updateSettings, useSettingsStore } from "./store";
 
 const HISTORY_LIMITS = [100, 250, 500, 1000, 2000];
@@ -288,6 +291,27 @@ function SettingsForm({ settings }: { settings: Settings }) {
           set({ screenshotHotkey });
         }}
       />
+      <Row label={ru.settings.chatModel}>
+        <select
+          aria-label={ru.settings.chatModel}
+          className={control}
+          value={settings.chatModel}
+          onChange={(e) => {
+            set({ chatModel: e.target.value });
+          }}
+        >
+          {(["claude", "gemini"] as const).map((provider) => (
+            <optgroup key={provider} label={ru.chat.providers[provider]}>
+              {CHAT_MODELS[provider].map((model) => (
+                <option key={model} value={model}>
+                  {ru.chat.models[model] ?? model}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </Row>
+      <ApiKeyRow />
       <Row label={ru.settings.historyLimit}>
         <select
           aria-label={ru.settings.historyLimit}
@@ -361,6 +385,35 @@ function SettingsForm({ settings }: { settings: Settings }) {
 }
 
 /** The "Настройки" tab (PLAN.md stage 5). */
+/** The API key for the chat: saved or not; the key itself never comes back. */
+function ApiKeyRow() {
+  const hasKey = useChatStore((st) => st.hasKey);
+  const provider = useChatStore((st) => st.provider);
+  if (!hasKey) {
+    return (
+      <div className="border-b border-white/8 py-2">
+        <KeySetup />
+      </div>
+    );
+  }
+  return (
+    <Row label={ru.settings.apiKey(ru.chat.providers[provider] ?? provider)}>
+      <span className="text-xs text-[var(--island-muted)]">{ru.settings.keySaved}</span>
+      <button
+        type="button"
+        className="rounded-lg bg-white/10 px-2 py-1 text-xs hover:bg-white/20"
+        onClick={() => {
+          saveKey(provider, "").catch((error: unknown) => {
+            reportError("chat_set_key", error);
+          });
+        }}
+      >
+        {ru.settings.removeKey}
+      </button>
+    </Row>
+  );
+}
+
 export function SettingsTab() {
   const settings = useSettingsStore((s) => s.settings);
   return (
