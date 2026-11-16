@@ -54,7 +54,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI0MjE2OEZGNkRCNkVDQzEKUldUQjdMWnQvMmdoSkRJYlJsa3VreGJMekJvbmxiQWwzUHZHRGdwQW1oblkxS3JWaDVTM1d4a3MK",
-      "endpoints": ["https://github.com/OWNER/cuba/releases/latest/download/latest.json"],
+      "endpoints": ["https://github.com/daststap/Cuba_island/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
       }

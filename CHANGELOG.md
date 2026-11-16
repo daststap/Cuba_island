@@ -39,4 +39,4 @@ All notable changes to Cuba (called Escape until 1.0.0). The format follows
   клавиши, размер истории, «Скопировано», непрозрачность.
 - Иконка в трее, вопрос об автозапуске при первом запуске, подписанные автообновления.
 
-[1.0.0]: https://github.com/OWNER/cuba/releases/tag/v1.0.0
+[1.0.0]: https://github.com/daststap/Cuba_island/releases/tag/v1.0.0

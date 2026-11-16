@@ -11,7 +11,7 @@ and publishes a GitHub release with `latest.json`, which the app checks for upda
    `plugins.updater.endpoints` with your GitHub user or organisation:
 
    ```json
-   "endpoints": ["https://github.com/<you>/cuba/releases/latest/download/latest.json"]
+   "endpoints": ["https://github.com/<you>/<repo>/releases/latest/download/latest.json"]
    ```
 
    Until this is done the app never contacts GitHub — update checks are skipped.
