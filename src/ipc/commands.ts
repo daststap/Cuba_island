@@ -173,6 +173,10 @@ export interface Settings {
   downloads: boolean;
   /** One of CHAT_MODELS. */
   chatModel: string;
+  /** Windows notifications in the island. */
+  notifications: boolean;
+  /** Apps whose notifications are not shown (display names). */
+  notificationsMuted: string[];
   /** 0.5–1 */
   opacity: number;
   onboarded: boolean;
@@ -491,4 +495,45 @@ export function chatNew(): Promise<ChatState> {
 /** Saves a provider's API key in Windows Credential Manager; an empty string removes it. */
 export function chatSetKey(provider: ChatProvider, key: string): Promise<ChatState> {
   return invoke("chat_set_key", { provider, key });
+}
+
+/** Mirrors `notifications::Item`. */
+export interface NotificationItem {
+  id: number;
+  /** App display name ("Telegram"). */
+  app: string;
+  title: string;
+  body: string;
+  /** Unix ms. */
+  time: number;
+  /** Cached app logo (file path for `convertFileSrc`). */
+  icon: string | null;
+}
+
+/** Mirrors `notifications::NotificationsState`. */
+export interface NotificationsState {
+  access: "allowed" | "denied" | "unspecified";
+  /** In the Notification Center, newest first, without muted apps. */
+  items: NotificationItem[];
+  /** Every app seen sending notifications. */
+  apps: string[];
+}
+
+export function notificationsGet(): Promise<NotificationsState> {
+  return invoke("notifications_get");
+}
+
+/** Opens the app that sent it and removes it from the Notification Center. */
+export function notificationsOpen(id: number): Promise<void> {
+  return invoke("notifications_open", { id });
+}
+
+/** Removes it from the island and the Notification Center. */
+export function notificationsDismiss(id: number): Promise<void> {
+  return invoke("notifications_dismiss", { id });
+}
+
+/** Opens Windows' privacy page for notification access. */
+export function notificationsOpenSettings(): Promise<void> {
+  return invoke("notifications_open_settings");
 }
