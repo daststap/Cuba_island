@@ -120,7 +120,7 @@ const SHELF: ShelfItem[] = [
 let shelfItems: ShelfItem[] = [];
 let notes: Note[] = [];
 let downloads: Download[] = [];
-let chat: ChatState = { messages: [], streaming: false, hasKey: false };
+let chat: ChatState = { messages: [], streaming: false, provider: "claude", hasKey: false };
 let hooksInstalled = false;
 let hotkeys = DEFAULT_HOTKEYS;
 let launcherResults = RESULTS;
@@ -139,7 +139,7 @@ describe("Island", () => {
     shelfItems = [];
     notes = [];
     downloads = [];
-    chat = { messages: [], streaming: false, hasKey: false };
+    chat = { messages: [], streaming: false, provider: "claude", hasKey: false };
     useChatStore.setState({ ...chat, draft: "", notice: null, loaded: false });
     useDownloadsStore.setState({ items: [], finished: null });
     useNotesStore.setState({
@@ -184,7 +184,12 @@ describe("Island", () => {
         if (cmd === "shelf_drag_out") return true;
         if (cmd === "indicators_get") return { sensors: NO_SENSORS, capsLock: false };
         if (cmd === "downloads_list") return downloads;
-        if (cmd === "chat_get") return chat;
+        if (cmd === "chat_get") {
+          return {
+            ...chat,
+            provider: settings.chatModel.startsWith("gemini") ? "gemini" : "claude",
+          };
+        }
         if (cmd === "chat_set_key") {
           chat = { ...chat, hasKey: true };
           return chat;
@@ -972,17 +977,36 @@ describe("Island", () => {
 
     it("asks for the API key first and saves it", async () => {
       openChat();
-      const input = await screen.findByLabelText(ru.settings.apiKey);
+      const input = await screen.findByLabelText(ru.settings.apiKey("Claude"));
       fireEvent.change(input, { target: { value: "sk-ant-test" } });
       fireEvent.click(screen.getByRole("button", { name: ru.chat.saveKey }));
       await vi.waitFor(() => {
-        expect(calls).toContainEqual({ cmd: "chat_set_key", args: { key: "sk-ant-test" } });
+        expect(calls).toContainEqual({
+          cmd: "chat_set_key",
+          args: { provider: "claude", key: "sk-ant-test" },
+        });
       });
       expect(await screen.findByRole("textbox", { name: ru.chat.input })).toBeInTheDocument();
     });
 
+    it("switches to free Gemini and warns about its terms", async () => {
+      openChat();
+      fireEvent.click(await screen.findByRole("radio", { name: /Gemini/ }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "settings_set",
+          args: { patch: { chatModel: "gemini-3.5-flash-lite" } },
+        });
+      });
+      expect(await screen.findByText(ru.chat.geminiNote)).toBeInTheDocument();
+      expect(screen.getByLabelText(ru.settings.apiKey("Gemini"))).toHaveAttribute(
+        "placeholder",
+        "AIza…",
+      );
+    });
+
     it("sends a message and streams the answer", async () => {
-      chat = { messages: [], streaming: false, hasKey: true };
+      chat = { messages: [], streaming: false, provider: "claude", hasKey: true };
       openChat();
       const input = await screen.findByRole("textbox", { name: ru.chat.input });
       fireEvent.change(input, { target: { value: "Столица Франции?" } });
@@ -1000,6 +1024,7 @@ describe("Island", () => {
       chat = {
         messages: [...chat.messages, { role: "assistant", text: "Париж" }],
         streaming: false,
+        provider: "claude",
         hasKey: true,
       };
       await act(async () => {
@@ -1012,7 +1037,12 @@ describe("Island", () => {
     });
 
     it("shows what went wrong", async () => {
-      chat = { messages: [{ role: "user", text: "Привет" }], streaming: true, hasKey: true };
+      chat = {
+        messages: [{ role: "user", text: "Привет" }],
+        streaming: true,
+        provider: "claude",
+        hasKey: true,
+      };
       openChat();
       await screen.findByText("Привет");
       chat = { ...chat, streaming: false };
@@ -1027,7 +1057,7 @@ describe("Island", () => {
     });
 
     it("takes a question from the command line to the chat tab", async () => {
-      chat = { messages: [], streaming: false, hasKey: true };
+      chat = { messages: [], streaming: false, provider: "claude", hasKey: true };
       useIslandStore.setState({ state: { mode: "expanded", tab: "launcher" } });
       render(<Island />);
       const input = await screen.findByRole("combobox");

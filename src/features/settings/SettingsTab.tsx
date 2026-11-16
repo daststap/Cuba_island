@@ -300,10 +300,14 @@ function SettingsForm({ settings }: { settings: Settings }) {
             set({ chatModel: e.target.value });
           }}
         >
-          {CHAT_MODELS.map((model) => (
-            <option key={model} value={model}>
-              {ru.chat.models[model] ?? model}
-            </option>
+          {(["claude", "gemini"] as const).map((provider) => (
+            <optgroup key={provider} label={ru.chat.providers[provider]}>
+              {CHAT_MODELS[provider].map((model) => (
+                <option key={model} value={model}>
+                  {ru.chat.models[model] ?? model}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </Row>
@@ -384,6 +388,7 @@ function SettingsForm({ settings }: { settings: Settings }) {
 /** The API key for the chat: saved or not; the key itself never comes back. */
 function ApiKeyRow() {
   const hasKey = useChatStore((st) => st.hasKey);
+  const provider = useChatStore((st) => st.provider);
   if (!hasKey) {
     return (
       <div className="border-b border-white/8 py-2">
@@ -392,13 +397,13 @@ function ApiKeyRow() {
     );
   }
   return (
-    <Row label={ru.settings.apiKey}>
+    <Row label={ru.settings.apiKey(ru.chat.providers[provider] ?? provider)}>
       <span className="text-xs text-[var(--island-muted)]">{ru.settings.keySaved}</span>
       <button
         type="button"
         className="rounded-lg bg-white/10 px-2 py-1 text-xs hover:bg-white/20"
         onClick={() => {
-          saveKey("").catch((error: unknown) => {
+          saveKey(provider, "").catch((error: unknown) => {
             reportError("chat_set_key", error);
           });
         }}

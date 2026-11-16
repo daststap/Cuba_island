@@ -325,6 +325,7 @@ export async function setupDemo(scene: Scene): Promise<void> {
           return {
             messages: scene === "chat" ? CHAT : [],
             streaming: false,
+            provider: "claude",
             hasKey: scene === "chat",
           };
         case "downloads_list":

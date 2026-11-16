@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import { ru } from "../../i18n/ru";
 import {
+  CHAT_MODELS,
   chatGet,
   chatNew,
   chatSend,
@@ -9,9 +10,11 @@ import {
   chatStop,
   reportError,
   type ChatMessage,
+  type ChatProvider,
   type ChatState,
 } from "../../ipc/commands";
 import { onChatDelta, onChatDone } from "../../ipc/events";
+import { updateSettings, useSettingsStore } from "../settings/store";
 
 interface ChatStore extends ChatState {
   /** The reply being streamed. */
@@ -26,6 +29,7 @@ const NO_MESSAGES: ChatMessage[] = [];
 export const useChatStore = create<ChatStore>()(() => ({
   messages: NO_MESSAGES,
   streaming: false,
+  provider: "claude",
   hasKey: false,
   draft: "",
   notice: null,
@@ -58,16 +62,35 @@ export function newChat(): void {
   chatNew().then(apply).catch(fail("chat_new"));
 }
 
-/** Saves (or with "" removes) the API key; resolves once stored. */
-export function saveKey(key: string): Promise<void> {
-  return chatSetKey(key).then(apply);
+/** Saves (or with "" removes) a provider's API key; resolves once stored. */
+export function saveKey(provider: ChatProvider, key: string): Promise<void> {
+  return chatSetKey(provider, key).then(apply);
+}
+
+/** Switches the chat to a provider's default model. */
+export function chooseProvider(provider: ChatProvider): void {
+  const model = CHAT_MODELS[provider][0];
+  if (model) void updateSettings({ chatModel: model });
 }
 
 /** Keeps the conversation in sync with Rust. Mount once. */
 export function useChatSync(): void {
   useEffect(() => {
-    chatGet().then(apply).catch(fail("chat_get"));
+    const reload = () => {
+      chatGet().then(apply).catch(fail("chat_get"));
+    };
+    reload();
+    // Another model may mean another provider (and key).
+    let model = useSettingsStore.getState().settings?.chatModel;
+    const unsubscribeSettings = useSettingsStore.subscribe((s) => {
+      const next = s.settings?.chatModel;
+      if (next !== model) {
+        model = next;
+        reload();
+      }
+    });
     const unsubscribe = [
+      unsubscribeSettings,
       onChatDelta((text) => {
         useChatStore.setState((s) => ({ draft: s.draft + text }));
       }),

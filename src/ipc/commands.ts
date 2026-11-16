@@ -440,8 +440,13 @@ export function downloadsReveal(path: string): Promise<void> {
   return invoke("downloads_reveal", { path });
 }
 
-/** Models offered for the chat (mirrors `chat::MODELS`); the first is the default. */
-export const CHAT_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] as const;
+export type ChatProvider = "claude" | "gemini";
+
+/** Models offered for the chat (mirrors `chat::MODELS`); the first of each is its default. */
+export const CHAT_MODELS: Record<ChatProvider, readonly string[]> = {
+  claude: ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"],
+  gemini: ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-4-hydrogen"],
+};
 
 /** Mirrors `chat::ChatMessage`. */
 export interface ChatMessage {
@@ -453,7 +458,9 @@ export interface ChatMessage {
 export interface ChatState {
   messages: ChatMessage[];
   streaming: boolean;
-  /** An API key is saved (the key itself never leaves Rust). */
+  /** Provider of the model chosen in settings. */
+  provider: ChatProvider;
+  /** A key for that provider is saved (the key itself never leaves Rust). */
   hasKey: boolean;
 }
 
@@ -481,7 +488,7 @@ export function chatNew(): Promise<ChatState> {
   return invoke("chat_new");
 }
 
-/** Saves the API key in Windows Credential Manager; an empty string removes it. */
-export function chatSetKey(key: string): Promise<ChatState> {
-  return invoke("chat_set_key", { key });
+/** Saves a provider's API key in Windows Credential Manager; an empty string removes it. */
+export function chatSetKey(provider: ChatProvider, key: string): Promise<ChatState> {
+  return invoke("chat_set_key", { provider, key });
 }

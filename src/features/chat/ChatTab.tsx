@@ -3,20 +3,46 @@ import { useIslandStore } from "../../app/store";
 import { ru } from "../../i18n/ru";
 import { reportError, type ChatMessage } from "../../ipc/commands";
 import { useSettingsStore } from "../settings/store";
-import { newChat, saveKey, sendMessage, stopReply, useChatStore } from "./store";
+import { chooseProvider, newChat, saveKey, sendMessage, stopReply, useChatStore } from "./store";
 
 const enterInput = () => {
   useIslandStore.getState().enterInput();
 };
 
-/** First run: paste the API key. */
+/** Claude or Gemini: picks that provider's default model. */
+function ProviderSwitch() {
+  const provider = useChatStore((s) => s.provider);
+  return (
+    <div role="radiogroup" aria-label={ru.settings.chatModel} className="flex gap-1">
+      {(["claude", "gemini"] as const).map((p) => (
+        <button
+          key={p}
+          type="button"
+          role="radio"
+          aria-checked={provider === p}
+          onClick={() => {
+            chooseProvider(p);
+          }}
+          className={`rounded-full px-3 py-1 text-xs transition-colors ${
+            provider === p ? "bg-white/20 text-white" : "text-white/60 hover:bg-white/10"
+          }`}
+        >
+          {ru.chat.providers[p]} <span className="text-white/45">· {ru.chat.providerHint[p]}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** First run: choose the provider and paste its API key. */
 export function KeySetup() {
+  const provider = useChatStore((s) => s.provider);
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const submit = () => {
     if (!key.trim()) return;
     setBusy(true);
-    saveKey(key)
+    saveKey(provider, key)
       .then(() => {
         setKey("");
       })
@@ -29,14 +55,18 @@ export function KeySetup() {
   };
   return (
     <div className="flex w-full max-w-md flex-col gap-3 text-sm">
-      <div className="text-base font-semibold">{ru.chat.setupTitle}</div>
-      <p className="text-[var(--island-muted)]">{ru.chat.setupText}</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-base font-semibold">{ru.chat.setupTitle}</div>
+        <ProviderSwitch />
+      </div>
+      <p className="text-[var(--island-muted)]">{ru.chat.setupText[provider]}</p>
+      {provider === "gemini" && <p className="text-xs text-[#ff9f0a]">{ru.chat.geminiNote}</p>}
       <div className="flex gap-2">
         <input
           type="password"
           value={key}
-          placeholder={ru.chat.keyPlaceholder}
-          aria-label={ru.settings.apiKey}
+          placeholder={ru.chat.keyPlaceholder[provider]}
+          aria-label={ru.settings.apiKey(ru.chat.providers[provider] ?? provider)}
           autoComplete="off"
           spellCheck={false}
           onMouseDown={enterInput}
@@ -52,7 +82,7 @@ export function KeySetup() {
           type="button"
           disabled={busy || !key.trim()}
           onClick={submit}
-          className="rounded-lg bg-[#d97757] px-3 py-2 font-medium text-white hover:bg-[#d97757]/85 disabled:opacity-40"
+          className="rounded-lg bg-[#0a84ff] px-3 py-2 font-medium text-white hover:bg-[#0a84ff]/85 disabled:opacity-40"
         >
           {ru.chat.saveKey}
         </button>
@@ -66,7 +96,7 @@ function Bubble({ message }: { message: ChatMessage }) {
   return (
     <li className={`flex ${mine ? "justify-end" : "justify-start"}`}>
       <div
-        aria-label={mine ? ru.chat.you : ru.chat.claude}
+        aria-label={mine ? ru.chat.you : ru.chat.assistant}
         className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed break-words whitespace-pre-wrap select-text ${
           mine ? "rounded-br-md bg-[#0a84ff] text-white" : "rounded-bl-md bg-white/10"
         }`}
