@@ -1,23 +1,27 @@
-//! The API key lives in Windows Credential Manager (encrypted for this user),
-//! never in settings files and never sent to the page.
+//! API keys live in Windows Credential Manager (encrypted for this user),
+//! never in settings files and never sent to the page. One entry per provider,
+//! shown in Credential Manager as "Escape/<provider>-api-key".
 
-use windows::core::{w, PWSTR};
+use windows::core::{HSTRING, PWSTR};
 use windows::Win32::Security::Credentials::{
     CredDeleteW, CredFree, CredReadW, CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE,
     CRED_TYPE_GENERIC,
 };
 
+use super::Provider;
 use crate::error::{AppError, AppResult};
 
-/// Shown in Credential Manager as "Escape/anthropic-api-key".
-const TARGET: windows::core::PCWSTR = w!("Escape/anthropic-api-key");
+fn target(provider: Provider) -> String {
+    format!("Escape/{}-api-key", provider.id())
+}
 
-pub fn load() -> Option<String> {
+pub fn load(provider: Provider) -> Option<String> {
+    let name = HSTRING::from(target(provider));
     let mut credential: *mut CREDENTIALW = std::ptr::null_mut();
     // SAFETY: on success `credential` points to a block owned by the system that we
-    // read once and release with CredFree below.
+    // read once and release with CredFree below; `name` outlives the call.
     unsafe {
-        CredReadW(TARGET, CRED_TYPE_GENERIC, None, &mut credential).ok()?;
+        CredReadW(&name, CRED_TYPE_GENERIC, None, &mut credential).ok()?;
         let cred = &*credential;
         if cred.CredentialBlob.is_null() || cred.CredentialBlobSize == 0 {
             CredFree(credential.cast());
@@ -31,12 +35,15 @@ pub fn load() -> Option<String> {
     }
 }
 
-pub fn save(key: &str) -> AppResult<()> {
-    let mut target: Vec<u16> = "Escape/anthropic-api-key\0".encode_utf16().collect();
+pub fn save(provider: Provider, key: &str) -> AppResult<()> {
+    let mut name: Vec<u16> = target(provider)
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
     let mut blob = key.as_bytes().to_vec();
     let credential = CREDENTIALW {
         Type: CRED_TYPE_GENERIC,
-        TargetName: PWSTR(target.as_mut_ptr()),
+        TargetName: PWSTR(name.as_mut_ptr()),
         CredentialBlobSize: u32::try_from(blob.len())
             .map_err(|_| AppError::InvalidArgument("слишком длинный ключ".into()))?,
         CredentialBlob: blob.as_mut_ptr(),
@@ -48,7 +55,8 @@ pub fn save(key: &str) -> AppResult<()> {
         .map_err(|err| AppError::Internal(format!("не удалось сохранить ключ: {err}")))
 }
 
-pub fn delete() {
-    // SAFETY: plain call with a static name; a missing entry just fails.
-    let _ = unsafe { CredDeleteW(TARGET, CRED_TYPE_GENERIC, None) };
+pub fn delete(provider: Provider) {
+    let name = HSTRING::from(target(provider));
+    // SAFETY: plain call; a missing entry just fails.
+    let _ = unsafe { CredDeleteW(&name, CRED_TYPE_GENERIC, None) };
 }

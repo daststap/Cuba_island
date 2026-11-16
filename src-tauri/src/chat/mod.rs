@@ -1,32 +1,112 @@
-//! AI chat with the user's own Anthropic API key (PLAN.md stage 6).
+//! AI chat with the user's own API key: Claude (Anthropic) or Gemini (Google)
+//! (PLAN.md stage 6).
 //!
-//! The only network traffic is to `api.anthropic.com`, and only when the user
-//! sends a message. The key stays in Rust (Credential Manager); the page gets
+//! Network traffic goes only to the chosen provider's API, and only when the
+//! user sends a message. Keys stay in Rust (Credential Manager); the page gets
 //! the streamed text through events. One conversation is kept (`chat.json` in
-//! the app data folder) until the user starts a new one.
+//! the app data folder) until the user starts a new one. Each reply is stored
+//! with its provider's raw content, which is sent back unchanged to the same
+//! provider (thinking blocks / thought signatures) and as plain text to the other.
 
-mod api;
+mod claude;
+mod gemini;
 #[cfg(windows)]
 mod key;
+mod stream;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use serde::Serialize;
-use serde_json::{json, Value};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::error::{AppError, AppResult};
-pub use api::MODELS;
+use stream::Update;
 
 /// Longest message the user can send (characters).
 const MAX_INPUT: usize = 20_000;
 
+/// Shared by both providers.
+const SYSTEM: &str = "You are an AI assistant built into Escape, a Dynamic Island for Windows. \
+The user asks quick questions from a small panel at the top of the screen. \
+Answer briefly and to the point, in the language the user writes in. \
+Replies are shown as plain text: do not use Markdown headings, tables or bold; \
+use short paragraphs and simple \"-\" lists when a list helps.";
+
+/// Every model offered in settings; the first is the app's default.
+pub const MODELS: [&str; 6] = [
+    claude::MODELS[0],
+    claude::MODELS[1],
+    claude::MODELS[2],
+    gemini::MODELS[0],
+    gemini::MODELS[1],
+    gemini::MODELS[2],
+];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Provider {
+    Claude,
+    Gemini,
+}
+
+impl Provider {
+    fn of_model(model: &str) -> Self {
+        if model.starts_with("gemini-") {
+            Self::Gemini
+        } else {
+            Self::Claude
+        }
+    }
+
+    fn parse(id: &str) -> AppResult<Self> {
+        match id {
+            "claude" => Ok(Self::Claude),
+            "gemini" => Ok(Self::Gemini),
+            other => Err(AppError::InvalidArgument(format!(
+                "неизвестный сервис {other}"
+            ))),
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Gemini => "gemini",
+        }
+    }
+
+    fn host(self) -> &'static str {
+        match self {
+            Self::Claude => "api.anthropic.com",
+            Self::Gemini => "generativelanguage.googleapis.com",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    User,
+    Assistant,
+}
+
+/// One message of the stored conversation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Turn {
+    pub role: Role,
+    pub text: String,
+    /// Who wrote an assistant reply, and its content exactly as received.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw: Option<Value>,
+}
+
 pub struct ChatShared {
     file: PathBuf,
-    /// API messages exactly as sent: `{role, content}`.
-    history: Mutex<Vec<Value>>,
+    history: Mutex<Vec<Turn>>,
     streaming: AtomicBool,
     cancel: AtomicBool,
 }
@@ -34,7 +114,7 @@ pub struct ChatShared {
 type Shared = Arc<ChatShared>;
 
 impl ChatShared {
-    fn history(&self) -> std::sync::MutexGuard<'_, Vec<Value>> {
+    fn history(&self) -> std::sync::MutexGuard<'_, Vec<Turn>> {
         self.history.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -50,7 +130,7 @@ impl ChatShared {
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
-    pub role: String,
+    pub role: Role,
     pub text: String,
 }
 
@@ -60,6 +140,9 @@ pub struct ChatMessage {
 pub struct ChatState {
     pub messages: Vec<ChatMessage>,
     pub streaming: bool,
+    /// The provider of the model chosen in settings.
+    pub provider: &'static str,
+    /// A key for that provider is saved.
     pub has_key: bool,
 }
 
@@ -69,19 +152,19 @@ pub struct ChatState {
 pub struct ChatDone {
     /// Something went wrong; the text says what.
     pub error: Option<String>,
-    /// Claude declined to answer.
+    /// The model declined to answer.
     pub refused: bool,
     /// The answer was cut at the length limit.
     pub truncated: bool,
 }
 
 #[cfg(windows)]
-fn load_key() -> Option<String> {
-    key::load()
+fn load_key(provider: Provider) -> Option<String> {
+    key::load(provider)
 }
 
 #[cfg(not(windows))]
-fn load_key() -> Option<String> {
+fn load_key(_provider: Provider) -> Option<String> {
     None
 }
 
@@ -91,7 +174,7 @@ pub fn start(app: &AppHandle) -> AppResult<()> {
     let file = app.path().app_data_dir()?.join("chat.json");
     let history = std::fs::read_to_string(&file)
         .ok()
-        .and_then(|text| serde_json::from_str::<Vec<Value>>(&text).ok())
+        .and_then(|text| serde_json::from_str::<Vec<Turn>>(&text).ok())
         .unwrap_or_default();
     app.manage(Arc::new(ChatShared {
         file,
@@ -102,19 +185,21 @@ pub fn start(app: &AppHandle) -> AppResult<()> {
     Ok(())
 }
 
-fn state(shared: &ChatShared) -> ChatState {
+fn state(app: &AppHandle, shared: &ChatShared) -> ChatState {
+    let provider = Provider::of_model(&crate::settings::chat_model(app));
     ChatState {
         messages: shared
             .history()
             .iter()
-            .map(|m| ChatMessage {
-                role: m["role"].as_str().unwrap_or("user").to_owned(),
-                text: api::text_of(&m["content"]),
+            .filter(|t| !t.text.is_empty())
+            .map(|t| ChatMessage {
+                role: t.role,
+                text: t.text.clone(),
             })
-            .filter(|m| !m.text.is_empty())
             .collect(),
         streaming: shared.streaming.load(Ordering::SeqCst),
-        has_key: load_key().is_some(),
+        provider: provider.id(),
+        has_key: load_key(provider).is_some(),
     }
 }
 
@@ -125,8 +210,8 @@ fn emit<P: Serialize + Clone>(app: &AppHandle, event: &str, payload: P) {
 }
 
 #[tauri::command]
-pub fn chat_get(shared: State<'_, Shared>) -> AppResult<ChatState> {
-    Ok(state(&shared))
+pub fn chat_get(app: AppHandle, shared: State<'_, Shared>) -> AppResult<ChatState> {
+    Ok(state(&app, &shared))
 }
 
 /// Sends the user's message; the reply streams as `chat://delta`, then `chat://done`.
@@ -141,34 +226,62 @@ pub fn chat_send(text: String, app: AppHandle, shared: State<'_, Shared>) -> App
             "слишком длинное сообщение".into(),
         ));
     }
-    let key = load_key()
+    let model = crate::settings::chat_model(&app);
+    let provider = Provider::of_model(&model);
+    let key = load_key(provider)
         .ok_or_else(|| AppError::Unavailable("сначала добавьте API-ключ в настройках".into()))?;
     if shared.streaming.swap(true, Ordering::SeqCst) {
-        return Err(AppError::Unavailable("Claude ещё отвечает".into()));
+        return Err(AppError::Unavailable("ответ ещё печатается".into()));
     }
     shared.cancel.store(false, Ordering::SeqCst);
-    shared
-        .history()
-        .push(json!({ "role": "user", "content": text }));
+    shared.history().push(Turn {
+        role: Role::User,
+        text,
+        provider: None,
+        raw: None,
+    });
     shared.save();
 
-    let model = crate::settings::chat_model(&app);
     let history = shared.history().clone();
     let task_shared = Arc::clone(&shared);
+    let task_app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let done = stream_reply(&app, &task_shared, &key, &model, &history).await;
+        let done = stream_reply(&task_app, &task_shared, provider, &key, &model, &history).await;
         task_shared.streaming.store(false, Ordering::SeqCst);
-        emit(&app, "chat://done", done);
+        emit(&task_app, "chat://done", done);
     });
-    Ok(state(&shared))
+    Ok(state(&app, &shared))
+}
+
+/// The reply being assembled, per provider.
+enum Reply {
+    Claude(claude::Reply),
+    Gemini(gemini::Reply),
+}
+
+impl Reply {
+    fn apply(&mut self, event: &Value) -> Vec<Update> {
+        match self {
+            Self::Claude(reply) => vec![reply.apply(event)],
+            Self::Gemini(reply) => reply.apply(event),
+        }
+    }
+
+    fn into_content(self) -> Value {
+        match self {
+            Self::Claude(reply) => reply.into_content(),
+            Self::Gemini(reply) => reply.into_content(),
+        }
+    }
 }
 
 async fn stream_reply(
     app: &AppHandle,
     shared: &ChatShared,
+    provider: Provider,
     key: &str,
     model: &str,
-    history: &[Value],
+    history: &[Turn],
 ) -> ChatDone {
     let mut done = ChatDone {
         error: None,
@@ -176,33 +289,48 @@ async fn stream_reply(
         truncated: false,
     };
     let client = reqwest::Client::new();
-    let mut request = client
-        .post(api::URL)
-        .header("x-api-key", key)
-        .header("anthropic-version", api::API_VERSION)
-        .header("content-type", "application/json")
-        .json(&api::request_body(model, history));
-    if api::has_fallbacks(model) {
-        request = request.header("anthropic-beta", api::FALLBACK_BETA);
-    }
+    let request = match provider {
+        Provider::Claude => {
+            let mut request = client
+                .post(claude::URL)
+                .header("x-api-key", key)
+                .header("anthropic-version", claude::API_VERSION)
+                .json(&claude::request_body(model, history));
+            if claude::has_fallbacks(model) {
+                request = request.header("anthropic-beta", claude::FALLBACK_BETA);
+            }
+            request
+        }
+        Provider::Gemini => client
+            .post(gemini::url(model))
+            .header("x-goog-api-key", key)
+            .json(&gemini::request_body(history)),
+    };
     let mut response = match request.send().await {
         Ok(response) => response,
         Err(err) => {
             log::warn!("chat request failed: {err}");
-            done.error = Some("Нет связи с api.anthropic.com".into());
+            done.error = Some(format!("Нет связи с {}", provider.host()));
             return done;
         }
     };
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        log::warn!("chat request returned {status}");
-        done.error = Some(api::error_text(status.as_u16(), &body));
+        log::warn!("chat request to {} returned {status}", provider.id());
+        done.error = Some(match provider {
+            Provider::Claude => claude::error_text(status.as_u16(), &body),
+            Provider::Gemini => gemini::error_text(status.as_u16(), &body),
+        });
         return done;
     }
 
-    let mut parser = api::SseParser::default();
-    let mut reply = api::Reply::default();
+    let mut parser = stream::SseParser::default();
+    let mut reply = match provider {
+        Provider::Claude => Reply::Claude(claude::Reply::default()),
+        Provider::Gemini => Reply::Gemini(gemini::Reply::default()),
+    };
+    let mut text = String::new();
     let mut cancelled = false;
     loop {
         if shared.cancel.load(Ordering::SeqCst) {
@@ -219,28 +347,32 @@ async fn stream_reply(
             }
         };
         for event in parser.push(&chunk) {
-            match reply.apply(&event) {
-                api::Update::Text(text) => emit(app, "chat://delta", text),
-                api::Update::Stop(reason) => {
-                    done.refused = reason == "refusal";
-                    done.truncated = reason == "max_tokens";
+            for update in reply.apply(&event) {
+                match update {
+                    Update::Text(delta) => {
+                        text.push_str(&delta);
+                        emit(app, "chat://delta", delta);
+                    }
+                    Update::Finish { refused, truncated } => {
+                        done.refused = refused;
+                        done.truncated = truncated;
+                    }
+                    Update::Error(message) => done.error = Some(message),
+                    Update::None => {}
                 }
-                api::Update::Error(message) => done.error = Some(message),
-                api::Update::None => {}
             }
         }
     }
 
-    // A stopped or broken reply keeps only its text; thinking without its end can't be sent back.
-    let content = if cancelled || done.error.is_some() {
-        reply.into_text_only()
-    } else {
-        reply.into_content()
-    };
-    if !content.is_empty() {
-        shared
-            .history()
-            .push(json!({ "role": "assistant", "content": content }));
+    if !text.is_empty() {
+        // A stopped or broken reply keeps only its text: unfinished thinking can't be replayed.
+        let complete = !cancelled && done.error.is_none();
+        shared.history().push(Turn {
+            role: Role::Assistant,
+            text,
+            provider: complete.then(|| provider.id().to_owned()),
+            raw: complete.then(|| reply.into_content()),
+        });
         shared.save();
     }
     done
@@ -255,41 +387,86 @@ pub fn chat_stop(shared: State<'_, Shared>) -> AppResult<()> {
 
 /// Starts a new conversation.
 #[tauri::command]
-pub fn chat_new(shared: State<'_, Shared>) -> AppResult<ChatState> {
+pub fn chat_new(app: AppHandle, shared: State<'_, Shared>) -> AppResult<ChatState> {
     if shared.streaming.load(Ordering::SeqCst) {
-        return Err(AppError::Unavailable("Claude ещё отвечает".into()));
+        return Err(AppError::Unavailable("ответ ещё печатается".into()));
     }
     shared.history().clear();
     shared.save();
-    Ok(state(&shared))
+    Ok(state(&app, &shared))
 }
 
-/// Saves (or, with an empty string, removes) the API key.
+/// Saves (or, with an empty string, removes) the API key of `provider`.
 #[tauri::command]
-pub fn chat_set_key(key: String, shared: State<'_, Shared>) -> AppResult<ChatState> {
+pub fn chat_set_key(
+    provider: String,
+    key: String,
+    app: AppHandle,
+    shared: State<'_, Shared>,
+) -> AppResult<ChatState> {
+    let provider = Provider::parse(&provider)?;
     let key = key.trim();
+    if key.chars().any(char::is_whitespace) {
+        return Err(AppError::InvalidArgument(
+            "в ключе не должно быть пробелов".into(),
+        ));
+    }
+    if provider == Provider::Claude && !key.is_empty() && !key.starts_with("sk-ant-") {
+        return Err(AppError::InvalidArgument(
+            "это не похоже на ключ Anthropic (он начинается с sk-ant-)".into(),
+        ));
+    }
     #[cfg(windows)]
     {
         if key.is_empty() {
-            self::key::delete();
-        } else if !key.starts_with("sk-ant-") {
-            return Err(AppError::InvalidArgument(
-                "это не похоже на ключ Anthropic (он начинается с sk-ant-)".into(),
-            ));
+            self::key::delete(provider);
         } else {
-            self::key::save(key)?;
+            self::key::save(provider, key)?;
         }
     }
-    #[cfg(not(windows))]
-    let _ = key;
-    Ok(state(&shared))
+    Ok(state(&app, &shared))
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn https_client_starts_with_our_tls_setup() {
         let _ = rustls::crypto::ring::default_provider().install_default();
         assert!(reqwest::Client::builder().build().is_ok());
+    }
+
+    #[test]
+    fn picks_the_provider_by_model() {
+        assert_eq!(
+            Provider::of_model("gemini-3.5-flash-lite"),
+            Provider::Gemini
+        );
+        assert_eq!(Provider::of_model("claude-haiku-5-5"), Provider::Claude);
+        assert!(Provider::parse("openai").is_err());
+    }
+
+    #[test]
+    fn stored_turns_round_trip() {
+        let turn = Turn {
+            role: Role::Assistant,
+            text: "Париж".into(),
+            provider: Some("claude".into()),
+            raw: Some(serde_json::json!([{ "type": "text", "text": "Париж" }])),
+        };
+        let json = serde_json::to_string(&[turn]).unwrap();
+        let back: Vec<Turn> = serde_json::from_str(&json).unwrap();
+        assert_eq!(back[0].role, Role::Assistant);
+        assert_eq!(back[0].raw.as_ref().unwrap()[0]["text"], "Париж");
+        // A user turn stores only its text.
+        assert!(!serde_json::to_string(&Turn {
+            role: Role::User,
+            text: "x".into(),
+            provider: None,
+            raw: None
+        })
+        .unwrap()
+        .contains("raw"));
     }
 }
