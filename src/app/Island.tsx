@@ -9,6 +9,8 @@ import { Clock, LongDate } from "../features/clock/Clock";
 import { useIndicatorsSync } from "../features/indicators/store";
 import { ChatTab } from "../features/chat/ChatTab";
 import { useChatSync } from "../features/chat/store";
+import { useNotificationsStore, useNotificationsSync } from "../features/notifications/store";
+import { NotificationPeek, NotificationsList } from "../features/notifications/views";
 import {
   useDownloadsStore,
   useDownloadsSync,
@@ -64,6 +66,7 @@ export function Island() {
   useIndicatorsSync();
   useDownloadsSync();
   useChatSync();
+  useNotificationsSync();
   useSettingsSync(announceUpdate);
   const state = useIslandStore((s) => s.state);
   const dispatch = useIslandStore((s) => s.dispatch);
@@ -72,6 +75,7 @@ export function Island() {
   const claudeAttention = useClaudeStore((s) => s.attention);
   const alert = useNotesStore((s) => s.alert);
   const finishedDownload = useDownloadsStore((s) => s.finished);
+  const latestNotification = useNotificationsStore((s) => s.latest);
   const opacity = useSettingsStore((s) => s.settings?.opacity ?? 1);
   const onboarding = useSettingsStore((s) => s.settings !== null && !s.settings.onboarded);
   const glow = useCoverColor(media?.cover ?? null);
@@ -85,7 +89,8 @@ export function Island() {
     (peekKind === "toast" && !toast) ||
     (peekKind === "claude" && !claudeAttention) ||
     (peekKind === "alert" && !alert) ||
-    (peekKind === "download" && !finishedDownload);
+    (peekKind === "download" && !finishedDownload) ||
+    (peekKind === "notification" && !latestNotification);
   const mode = stale ? "compact" : state.mode;
   const shape =
     mode === "expanded"
@@ -97,7 +102,10 @@ export function Island() {
             ? SHAPES.capsPeek
             : peekKind === "toast"
               ? SHAPES.toastPeek
-              : peekKind === "claude" || peekKind === "alert" || peekKind === "download"
+              : peekKind === "claude" ||
+                  peekKind === "alert" ||
+                  peekKind === "download" ||
+                  peekKind === "notification"
                 ? SHAPES.claudePeek
                 : SHAPES.peek
         : SHAPES.compact;
@@ -133,6 +141,8 @@ export function Island() {
     content = <ClaudePeek />;
   } else if (mode === "peek" && peekKind === "alert") {
     content = <AlertPeek />;
+  } else if (mode === "peek" && peekKind === "notification") {
+    content = <NotificationPeek />;
   } else if (mode === "peek" && peekKind === "download") {
     content = <DownloadPeek />;
   } else if (mode === "peek" && peekKind === "caps") {
@@ -274,9 +284,10 @@ function ExpandedView({
         {player ? (
           <>
             <MediaPlayer media={media} />
-            <div className="mt-3 flex w-full flex-col gap-2">
+            <div className="mt-3 flex max-h-28 min-h-0 w-full shrink-0 flex-col gap-2 overflow-y-auto">
               <SensorsLine />
               <DownloadsList />
+              <NotificationsList />
               <ClaudeSessions />
             </div>
           </>
@@ -297,9 +308,10 @@ function ExpandedView({
             <div className="mt-5 text-sm text-[var(--island-muted)]">
               <BatteryIndicator />
             </div>
-            <div className="mt-4 flex w-full flex-col gap-3">
+            <div className="mt-4 flex max-h-32 min-h-0 w-full flex-col gap-3 overflow-y-auto">
               <SensorsLine />
               <DownloadsList />
+              <NotificationsList />
               <ClaudeSessions />
             </div>
           </>

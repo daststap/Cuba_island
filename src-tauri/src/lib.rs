@@ -10,6 +10,7 @@ mod indicators;
 mod launcher;
 mod media;
 mod notes;
+mod notifications;
 #[cfg(windows)]
 mod screenshot;
 mod settings;
@@ -112,6 +113,10 @@ pub fn run() {
             chat::chat_stop,
             chat::chat_new,
             chat::chat_set_key,
+            notifications::notifications_get,
+            notifications::notifications_open,
+            notifications::notifications_dismiss,
+            notifications::notifications_open_settings,
             downloads::downloads_reveal,
             screenshot::screenshot_start,
             screenshot::screenshot_frame,
@@ -142,6 +147,7 @@ pub fn run() {
             claude::start(handle);
             indicators::start(handle);
             downloads::start(handle);
+            notifications::start(handle);
             tray::create(handle)?;
             Ok(())
         })

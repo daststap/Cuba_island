@@ -4,6 +4,7 @@ import { useIslandStore } from "../../app/store";
 import { ru } from "../../i18n/ru";
 import {
   CHAT_MODELS,
+  notificationsOpenSettings,
   clipboardClear,
   hotkeysPause,
   monitorsList,
@@ -17,6 +18,7 @@ import { ClaudeHooksSetting } from "../claude/views";
 import { useClipboardStore } from "../clipboard/store";
 import { comboFromKeyPress } from "./hotkey";
 import { KeySetup } from "../chat/ChatTab";
+import { useNotificationsStore } from "../notifications/store";
 import { saveKey, useChatStore } from "../chat/store";
 import { updateSettings, useSettingsStore } from "./store";
 
@@ -352,6 +354,11 @@ function SettingsForm({ settings }: { settings: Settings }) {
           set({ capsPeek });
         }}
       />
+      <NotificationSettings
+        enabled={settings.notifications}
+        muted={settings.notificationsMuted}
+        set={set}
+      />
       <Toggle
         label={ru.settings.downloads}
         checked={settings.downloads}
@@ -411,6 +418,77 @@ function ApiKeyRow() {
         {ru.settings.removeKey}
       </button>
     </Row>
+  );
+}
+
+/** Windows notifications: on/off, access hint, and a switch per app. */
+function NotificationSettings({
+  enabled,
+  muted,
+  set,
+}: {
+  enabled: boolean;
+  muted: string[];
+  set: (patch: { notifications?: boolean; notificationsMuted?: string[] }) => void;
+}) {
+  const access = useNotificationsStore((s) => s.access);
+  const apps = useNotificationsStore((s) => s.apps);
+  return (
+    <>
+      <Toggle
+        label={ru.settings.notifications}
+        checked={enabled}
+        onChange={(notifications) => {
+          set({ notifications });
+        }}
+      />
+      {enabled && access !== "allowed" && (
+        <div className="flex items-center justify-between gap-3 py-1 text-xs text-[#ff9f0a]">
+          <span>{ru.settings.notificationsDenied}</span>
+          <button
+            type="button"
+            className="shrink-0 rounded-lg bg-white/10 px-2 py-1 text-[var(--island-fg)] hover:bg-white/20"
+            onClick={() => {
+              notificationsOpenSettings().catch((error: unknown) => {
+                reportError("notifications_open_settings", error);
+              });
+            }}
+          >
+            {ru.settings.openPrivacy}
+          </button>
+        </div>
+      )}
+      {enabled && access === "allowed" && (
+        <div className="py-1">
+          <div className="text-xs text-[var(--island-muted)]">{ru.settings.notificationApps}</div>
+          {apps.length === 0 ? (
+            <div className="py-1 text-xs text-[var(--island-muted)]">
+              {ru.settings.notificationAppsEmpty}
+            </div>
+          ) : (
+            <div className="pl-3">
+              {apps.map((app) => {
+                const on = !muted.some((m) => m.toLowerCase() === app.toLowerCase());
+                return (
+                  <Toggle
+                    key={app}
+                    label={app}
+                    checked={on}
+                    onChange={(show) => {
+                      set({
+                        notificationsMuted: show
+                          ? muted.filter((m) => m.toLowerCase() !== app.toLowerCase())
+                          : [...muted, app],
+                      });
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 

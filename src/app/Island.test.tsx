@@ -8,12 +8,14 @@ import { useSettingsStore } from "../features/settings/store";
 import { useClaudeStore } from "../features/claude/store";
 import { SHELF_DROP_MESSAGE, useShelfStore } from "../features/shelf/store";
 import { useChatStore } from "../features/chat/store";
+import { useNotificationsStore } from "../features/notifications/store";
 import { useDownloadsStore } from "../features/downloads/store";
 import { NO_SENSORS, useIndicatorsStore } from "../features/indicators/store";
 import { DEFAULT_PICKED_MS, IDLE_TIMER, useNotesStore } from "../features/notes/store";
 import type {
   ChatState,
   Download,
+  NotificationsState,
   Note,
   ShelfItem,
   ClaudeSession,
@@ -89,6 +91,8 @@ const DEFAULT_SETTINGS: Settings = {
   capsPeek: true,
   downloads: true,
   chatModel: "claude-haiku-5-5",
+  notifications: true,
+  notificationsMuted: [],
   opacity: 1,
   onboarded: true,
 };
@@ -120,6 +124,7 @@ const SHELF: ShelfItem[] = [
 let shelfItems: ShelfItem[] = [];
 let notes: Note[] = [];
 let downloads: Download[] = [];
+let notificationsState: NotificationsState = { access: "allowed", items: [], apps: [] };
 /** How many chat_get calls fail first (Rust still starting). */
 let chatNotReady = 0;
 let chat: ChatState = { messages: [], streaming: false, provider: "claude", hasKey: false };
@@ -141,6 +146,8 @@ describe("Island", () => {
     shelfItems = [];
     notes = [];
     downloads = [];
+    notificationsState = { access: "allowed", items: [], apps: [] };
+    useNotificationsStore.setState({ ...notificationsState, latest: null });
     chatNotReady = 0;
     chat = { messages: [], streaming: false, provider: "claude", hasKey: false };
     useChatStore.setState({ ...chat, draft: "", notice: null, loaded: false });
@@ -187,6 +194,7 @@ describe("Island", () => {
         if (cmd === "shelf_drag_out") return true;
         if (cmd === "indicators_get") return { sensors: NO_SENSORS, capsLock: false };
         if (cmd === "downloads_list") return downloads;
+        if (cmd === "notifications_get") return notificationsState;
         if (cmd === "chat_get") {
           if (chatNotReady > 0) {
             chatNotReady -= 1;
@@ -1089,6 +1097,69 @@ describe("Island", () => {
       expect(useIslandStore.getState().state).toEqual({ mode: "expanded", tab: "chat" });
       await vi.waitFor(() => {
         expect(calls).toContainEqual({ cmd: "chat_send", args: { text: "2+2*2" } });
+      });
+    });
+  });
+
+  describe("windows notifications", () => {
+    const message = {
+      id: 7,
+      app: "Telegram",
+      title: "Маша",
+      body: "Ты где?",
+      time: Date.now() - 2 * 60_000,
+      icon: null,
+    };
+
+    it("peeks on a new notification and opens the app on click", async () => {
+      render(<Island />);
+      await act(async () => {
+        await emit("notifications://new", message);
+      });
+      expect(useIslandStore.getState().state).toEqual({ mode: "peek", kind: "notification" });
+      const peek = screen.getByRole("button", { name: ru.notifications.open("Telegram") });
+      expect(peek).toHaveTextContent("Маша");
+      expect(peek).toHaveTextContent("Ты где?");
+      fireEvent.click(peek);
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "notifications_open", args: { id: 7 } });
+      });
+      expect(useIslandStore.getState().state.mode).toBe("compact");
+    });
+
+    it("lists notifications on the home tab and dismisses them", async () => {
+      notificationsState = { access: "allowed", items: [message], apps: ["Telegram"] };
+      useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
+      render(<Island />);
+      const list = await screen.findByRole("list", { name: ru.notifications.list });
+      expect(list).toHaveTextContent("Маша");
+      expect(list).toHaveTextContent(ru.notifications.minutesAgo(2));
+      fireEvent.click(screen.getByRole("button", { name: ru.notifications.dismiss("Telegram") }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "notifications_dismiss", args: { id: 7 } });
+      });
+    });
+
+    it("mutes one app from settings", async () => {
+      notificationsState = { access: "allowed", items: [], apps: ["Discord", "Telegram"] };
+      useIslandStore.setState({ state: { mode: "expanded", tab: "settings" } });
+      render(<Island />);
+      fireEvent.click(await screen.findByRole("switch", { name: "Discord" }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "settings_set",
+          args: { patch: { notificationsMuted: ["Discord"] } },
+        });
+      });
+    });
+
+    it("explains how to allow access when Windows denies it", async () => {
+      notificationsState = { access: "denied", items: [], apps: [] };
+      useIslandStore.setState({ state: { mode: "expanded", tab: "settings" } });
+      render(<Island />);
+      fireEvent.click(await screen.findByRole("button", { name: ru.settings.openPrivacy }));
+      await vi.waitFor(() => {
+        expect(calls.some((c) => c.cmd === "notifications_open_settings")).toBe(true);
       });
     });
   });

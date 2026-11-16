@@ -88,6 +88,12 @@ export const ru = {
     privacyDots: "Показывать микрофон и камеру",
     capsPeek: "Показывать Caps Lock",
     downloads: "Показывать загрузки",
+    notifications: "Показывать уведомления Windows",
+    notificationApps: "Уведомления от приложений",
+    notificationAppsEmpty: "Список появится, когда приложения пришлют уведомления",
+    notificationsDenied:
+      "Windows не даёт острову читать уведомления — включите «Разрешить классическим приложениям доступ к уведомлениям»",
+    openPrivacy: "Открыть параметры",
     chatModel: "Модель для чата",
     apiKey: (provider: string) => `Ключ API ${provider}`,
     keySaved: "сохранён в диспетчере учётных данных Windows",
@@ -211,6 +217,14 @@ export const ru = {
     finished: "Загружено",
     gameReady: "Игра готова",
     reveal: "Нажмите, чтобы показать в папке",
+  },
+  notifications: {
+    list: "Уведомления",
+    open: (app: string) => `Открыть ${app}`,
+    dismiss: (app: string) => `Убрать уведомление ${app}`,
+    now: "сейчас",
+    minutesAgo: (n: number) => `${String(n)} мин назад`,
+    hoursAgo: (n: number) => `${String(n)} ч назад`,
   },
   indicators: {
     microphone: "Микрофон",

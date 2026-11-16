@@ -18,6 +18,7 @@ export const PEEK_DURATION_MS: Record<PeekKind, number> = {
   alert: Number.POSITIVE_INFINITY,
   caps: 1500,
   download: 4000,
+  notification: 5000,
 };
 
 interface IslandStore {

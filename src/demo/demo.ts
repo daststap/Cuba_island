@@ -6,6 +6,7 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { useIslandStore } from "../app/store";
 import { useIndicatorsStore } from "../features/indicators/store";
+import { useNotificationsStore } from "../features/notifications/store";
 import type {
   ClipItem,
   LaunchResult,
@@ -31,6 +32,7 @@ export const SCENES = [
   "snip",
   "downloads",
   "chat",
+  "notification",
 ] as const;
 export type Scene = (typeof SCENES)[number];
 
@@ -69,6 +71,8 @@ const SETTINGS: Settings = {
   capsPeek: true,
   downloads: true,
   chatModel: "claude-haiku-5-5",
+  notifications: true,
+  notificationsMuted: [],
   opacity: 1,
   onboarded: true,
 };
@@ -194,6 +198,25 @@ const NOTES: Note[] = [
 const LAUNCH: LaunchResult[] = [
   { id: "calc:6", kind: "calc", title: "6", iconPath: null },
   { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
+];
+
+const NOTIFICATIONS = [
+  {
+    id: 1,
+    app: "Telegram",
+    title: "Маша",
+    body: "Встречаемся в 7 у входа?",
+    time: Date.now() - 3 * 60_000,
+    icon: null,
+  },
+  {
+    id: 2,
+    app: "Почта",
+    title: "Отчёт за ноябрь",
+    body: "Пришлите, пожалуйста, до пятницы",
+    time: Date.now() - 50 * 60_000,
+    icon: null,
+  },
 ];
 
 const CHAT = [
@@ -328,6 +351,12 @@ export async function setupDemo(scene: Scene): Promise<void> {
             provider: "claude",
             hasKey: scene === "chat",
           };
+        case "notifications_get":
+          return {
+            access: "allowed",
+            items: scene === "home" ? NOTIFICATIONS : [],
+            apps: ["Telegram", "Почта"],
+          };
         case "downloads_list":
           return scene === "home" || scene === "downloads" ? DOWNLOADS : [];
         case "screenshot_frame":
@@ -355,6 +384,10 @@ export async function setupDemo(scene: Scene): Promise<void> {
     case "caps":
       useIndicatorsStore.setState({ capsLock: true });
       store.setState({ state: { mode: "peek", kind: "caps" } });
+      break;
+    case "notification":
+      useNotificationsStore.setState({ latest: NOTIFICATIONS[0] ?? null });
+      store.setState({ state: { mode: "peek", kind: "notification" } });
       break;
     case "chat":
       store.setState({ state: { mode: "expanded", tab: "chat" }, inputMode: true });

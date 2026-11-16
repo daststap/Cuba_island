@@ -37,6 +37,10 @@ pub struct Settings {
     pub downloads: bool,
     /// Model for the AI chat (one of `chat::MODELS`).
     pub chat_model: String,
+    /// Windows notifications in the island.
+    pub notifications: bool,
+    /// Apps whose notifications are not shown (display names).
+    pub notifications_muted: Vec<String>,
     /// Island background opacity, 0.5–1.
     pub opacity: f64,
     /// The first-run autostart question has been answered.
@@ -59,6 +63,8 @@ impl Default for Settings {
             caps_peek: true,
             downloads: true,
             chat_model: crate::chat::MODELS[0].to_owned(),
+            notifications: true,
+            notifications_muted: Vec::new(),
             opacity: 1.0,
             onboarded: false,
         }
@@ -125,6 +131,13 @@ impl Settings {
 }
 
 pub type SettingsState = Mutex<Settings>;
+
+/// A copy of the current settings (defaults before they are loaded).
+pub fn snapshot(app: &AppHandle) -> Settings {
+    app.try_state::<SettingsState>()
+        .map(|s| s.lock().unwrap_or_else(PoisonError::into_inner).clone())
+        .unwrap_or_default()
+}
 
 /// The chat model currently chosen in settings.
 pub fn chat_model(app: &AppHandle) -> String {
@@ -217,10 +230,15 @@ pub fn settings_set(
     let next = current.merged(&patch)?;
     apply(&app, &current, &next)?;
     save(&app, &next)?;
+    let notifications_changed = current.notifications != next.notifications
+        || current.notifications_muted != next.notifications_muted;
     *current = next.clone();
     drop(current);
     if let Err(err) = app.emit("settings://changed", &next) {
         log::warn!("failed to emit settings://changed: {err}");
+    }
+    if notifications_changed {
+        crate::notifications::refresh(&app);
     }
     Ok(next)
 }

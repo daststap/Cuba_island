@@ -8,6 +8,8 @@ import type {
   ChatDone,
   Download,
   FinishedDownload,
+  NotificationItem,
+  NotificationsState,
   ClaudeSession,
   ClipItem,
   MediaState,
@@ -50,6 +52,8 @@ interface EventMap {
   "downloads://finished": FinishedDownload;
   "chat://delta": string;
   "chat://done": ChatDone;
+  "notifications://new": NotificationItem;
+  "notifications://list": NotificationsState;
 }
 
 function subscribe<K extends keyof EventMap>(
@@ -131,3 +135,9 @@ export const onDownloadFinished = (handler: (item: FinishedDownload) => void) =>
 export const onChatDelta = (handler: (text: string) => void) => subscribe("chat://delta", handler);
 
 export const onChatDone = (handler: (done: ChatDone) => void) => subscribe("chat://done", handler);
+
+export const onNotification = (handler: (item: NotificationItem) => void) =>
+  subscribe("notifications://new", handler);
+
+export const onNotificationsList = (handler: (state: NotificationsState) => void) =>
+  subscribe("notifications://list", handler);
