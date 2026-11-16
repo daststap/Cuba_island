@@ -33,6 +33,8 @@ pub struct Settings {
     pub privacy_dots: bool,
     /// A short peek when Caps Lock is toggled.
     pub caps_peek: bool,
+    /// Downloads in the pill and on the home tab.
+    pub downloads: bool,
     /// Island background opacity, 0.5–1.
     pub opacity: f64,
     /// The first-run autostart question has been answered.
@@ -53,6 +55,7 @@ impl Default for Settings {
             copy_peek: true,
             privacy_dots: true,
             caps_peek: true,
+            downloads: true,
             opacity: 1.0,
             onboarded: false,
         }

@@ -2,6 +2,7 @@
 
 mod claude;
 mod clipboard;
+mod downloads;
 pub mod error;
 mod hotkeys;
 mod indicators;
@@ -104,6 +105,8 @@ pub fn run() {
             notes::timer_control,
             notes::timer_silence,
             indicators::indicators_get,
+            downloads::downloads_list,
+            downloads::downloads_reveal,
             screenshot::screenshot_start,
             screenshot::screenshot_frame,
             screenshot::screenshot_ready,
@@ -130,6 +133,7 @@ pub fn run() {
             hotkeys::register(handle, &settings.hotkeys());
             claude::start(handle);
             indicators::start(handle);
+            downloads::start(handle);
             tray::create(handle)?;
             Ok(())
         })
