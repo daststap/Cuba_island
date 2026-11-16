@@ -181,7 +181,7 @@ export interface Settings {
   notifications: boolean;
   /** Apps whose notifications are not shown (display names). */
   notificationsMuted: string[];
-  /** Turn off Windows' own banners for apps the island shows. */
+  /** Take shown notifications out of Windows at once (closes their banners). */
   hideWindowsBanners: boolean;
   /** 0.5–1 */
   opacity: number;

@@ -1,6 +1,6 @@
 //! What the island does with notifications, independent of Windows.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 
 use serde::Serialize;
 
@@ -65,36 +65,6 @@ pub fn allowed(app: &str, muted: &[String]) -> bool {
     !muted.iter().any(|m| m.eq_ignore_ascii_case(app))
 }
 
-/// What to do with Windows' own banners: turn them off for apps the island
-/// shows, and give them back to apps the island hid them for when the user turns
-/// the option off or mutes the app. Apps whose banners were already off are left
-/// alone (`already_off`), so the user's own choices are never changed.
-pub fn banner_plan(
-    known: &BTreeMap<String, String>,
-    hidden_by_us: &BTreeMap<String, String>,
-    active: bool,
-    muted: &[String],
-    already_off: impl Fn(&str) -> bool,
-) -> (Vec<(String, String)>, Vec<String>) {
-    let mut hide = Vec::new();
-    for (app_id, app) in known {
-        if active
-            && allowed(app, muted)
-            && !app_id.is_empty()
-            && !hidden_by_us.contains_key(app_id)
-            && !already_off(app_id)
-        {
-            hide.push((app_id.clone(), app.clone()));
-        }
-    }
-    let restore = hidden_by_us
-        .iter()
-        .filter(|(_, app)| !active || !allowed(app, muted))
-        .map(|(app_id, _)| app_id.clone())
-        .collect();
-    (hide, restore)
-}
-
 /// Newest first, at most `limit`, without muted apps.
 pub fn visible(items: &[Item], muted: &[String], limit: usize) -> Vec<Item> {
     let mut list: Vec<Item> = items
@@ -144,38 +114,6 @@ mod tests {
             ("Маша".into(), "Привет!\nТы где?".into())
         );
         assert_eq!(split_texts(&[]), (String::new(), String::new()));
-    }
-
-    #[test]
-    fn plans_banners_without_touching_the_users_own_choices() {
-        let known: BTreeMap<String, String> = [
-            ("tg".to_owned(), "Telegram".to_owned()),
-            ("ds".to_owned(), "Discord".to_owned()),
-            ("ms".to_owned(), "Почта".to_owned()),
-        ]
-        .into();
-        let none = BTreeMap::new();
-        // "Почта" already had banners off by the user: not ours to manage.
-        let (hide, restore) = banner_plan(&known, &none, true, &[], |id| id == "ms");
-        assert_eq!(
-            hide.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
-            ["ds", "tg"]
-        );
-        assert!(restore.is_empty());
-
-        let ours: BTreeMap<String, String> = [
-            ("tg".to_owned(), "Telegram".to_owned()),
-            ("ds".to_owned(), "Discord".to_owned()),
-        ]
-        .into();
-        // Muting Discord in the island gives its banners back.
-        let (hide, restore) = banner_plan(&known, &ours, true, &["discord".into()], |_| false);
-        assert!(hide.is_empty() || hide.iter().all(|(id, _)| id == "ms"));
-        assert_eq!(restore, ["ds"]);
-        // Turning the option off gives back everything we hid, nothing else.
-        let (hide, restore) = banner_plan(&known, &ours, false, &[], |_| false);
-        assert!(hide.is_empty());
-        assert_eq!(restore, ["ds", "tg"]);
     }
 
     #[test]

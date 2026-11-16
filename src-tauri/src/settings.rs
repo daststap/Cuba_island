@@ -45,7 +45,7 @@ pub struct Settings {
     pub notifications: bool,
     /// Apps whose notifications are not shown (display names).
     pub notifications_muted: Vec<String>,
-    /// Turn off Windows' own banners for apps the island shows.
+    /// Take notifications out of Windows as soon as the island shows them (closes their banners).
     pub hide_windows_banners: bool,
     /// Island background opacity, 0.5–1.
     pub opacity: f64,
