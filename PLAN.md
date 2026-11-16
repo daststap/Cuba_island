@@ -57,7 +57,7 @@
 | Линт | `clippy`, `rustfmt`, `eslint`, `prettier` |
 | CI | GitHub Actions, `windows-latest`, `tauri-apps/tauri-action` |
 
-Требования к машине разработчика: Windows 10 22H2+ или Windows 11, Rust (MSVC toolchain), Node 20+, Visual Studio Build Tools с компонентом «Desktop development with C++», WebView2 Runtime.
+Требования к машине разработчика: Windows 10 22H2+ или Windows 11, Rust (MSVC toolchain), Node 24+, Visual Studio Build Tools с компонентом «Desktop development with C++», WebView2 Runtime.
 
 ---
 

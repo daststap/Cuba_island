@@ -100,7 +100,7 @@ Vite · Tailwind CSS v4 · motion · zustand · SQLite (rusqlite).
 - [Rust](https://rustup.rs/) (toolchain `stable-x86_64-pc-windows-msvc`)
 - [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
   с компонентом «Desktop development with C++»
-- Node.js 20+
+- Node.js 24+
 - WebView2 Runtime (в Windows 11 уже есть)
 
 ### Разработка
