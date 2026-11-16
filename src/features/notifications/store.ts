@@ -49,13 +49,13 @@ export function useNotificationsSync(): void {
   useEffect(() => {
     notificationsGet()
       .then((state) => {
-        // Merge only a real answer: zustand would replace the store with a null.
-        if (state) useNotificationsStore.setState(state);
+        // Spread, so an empty answer merges nothing instead of replacing the store.
+        useNotificationsStore.setState({ ...state });
       })
       .catch(fail("notifications_get"));
     const unsubscribe = [
       onNotificationsList((state) => {
-        if (state) useNotificationsStore.setState(state);
+        useNotificationsStore.setState({ ...state });
       }),
       onNotification((item) => {
         useNotificationsStore.setState({ latest: item });
