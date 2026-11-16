@@ -10,7 +10,8 @@ mod model;
 #[cfg(windows)]
 mod win32;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
@@ -50,13 +51,70 @@ struct Shared {
     /// Everything in the center at the last look (muted apps included).
     all: Vec<Item>,
     apps: BTreeSet<String>,
+    /// App id → name of every app seen.
+    known: BTreeMap<String, String>,
 }
 
 static STATE: Mutex<Shared> = Mutex::new(Shared {
     access: Access::Unspecified,
     all: Vec::new(),
     apps: BTreeSet::new(),
+    known: BTreeMap::new(),
 });
+
+/// Apps whose Windows banners the island turned off (app id → name), kept on
+/// disk so they can be given back later, even after a restart.
+fn banners_file(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_data_dir()
+        .ok()
+        .map(|dir| dir.join("notification-banners.json"))
+}
+
+fn load_hidden(app: &AppHandle) -> BTreeMap<String, String> {
+    banners_file(app)
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn save_hidden(app: &AppHandle, hidden: &BTreeMap<String, String>) {
+    if let Some(path) = banners_file(app) {
+        let text = serde_json::to_string(hidden).unwrap_or_default();
+        if let Err(err) = std::fs::write(path, text) {
+            log::warn!("failed to save hidden banners: {err}");
+        }
+    }
+}
+
+/// Applies the "hide Windows banners" option for the apps seen so far.
+#[cfg(windows)]
+fn sync_banners(app: &AppHandle, hidden: &mut BTreeMap<String, String>) {
+    let settings = crate::settings::snapshot(app);
+    let active = settings.notifications && settings.hide_windows_banners;
+    let known = shared().known.clone();
+    let (hide, restore) = model::banner_plan(
+        &known,
+        hidden,
+        active,
+        &settings.notifications_muted,
+        win32::banner_off,
+    );
+    if hide.is_empty() && restore.is_empty() {
+        return;
+    }
+    for (app_id, name) in hide {
+        log::info!("hiding Windows banners of {name}");
+        win32::set_banner(&app_id, false);
+        hidden.insert(app_id, name);
+    }
+    for app_id in restore {
+        log::info!("giving Windows banners back to {:?}", hidden.get(&app_id));
+        win32::set_banner(&app_id, true);
+        hidden.remove(&app_id);
+    }
+    save_hidden(app, hidden);
+}
 
 fn shared() -> std::sync::MutexGuard<'static, Shared> {
     STATE.lock().unwrap_or_else(PoisonError::into_inner)
@@ -101,6 +159,7 @@ fn watch(app: &AppHandle) {
         .unwrap_or_default();
     let mut icons = win32::Icons::new(icons_dir);
     let mut tracker = model::Tracker::default();
+    let mut hidden = load_hidden(app);
     loop {
         let access = win32::access();
         let changed_access = {
@@ -120,6 +179,11 @@ fn watch(app: &AppHandle) {
                     let changed = {
                         let mut state = shared();
                         state.apps.extend(items.iter().map(|i| i.app.clone()));
+                        for item in &items {
+                            if !item.app_id.is_empty() {
+                                state.known.insert(item.app_id.clone(), item.app.clone());
+                            }
+                        }
                         let ids = |list: &[Item]| list.iter().map(|i| i.id).collect::<Vec<_>>();
                         let changed = ids(&state.all) != ids(&items);
                         state.all = items;
@@ -139,6 +203,7 @@ fn watch(app: &AppHandle) {
                 Err(err) => log::warn!("could not read notifications: {err}"),
             }
         }
+        sync_banners(app, &mut hidden);
         std::thread::sleep(POLL);
     }
 }

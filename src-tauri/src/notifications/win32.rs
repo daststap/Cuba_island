@@ -142,6 +142,7 @@ fn item(notification: &UserNotification, icons: &mut Icons) -> Option<Item> {
         body,
         time,
         icon: icons.get(notification, &app_id),
+        app_id,
     })
 }
 
@@ -181,4 +182,59 @@ pub fn open_app(app_id: &str) -> std::io::Result<()> {
         .arg(format!("shell:AppsFolder\\{app_id}"))
         .spawn()
         .map(|_| ())
+}
+
+/// Where Windows keeps an app's notification preferences (as the Settings app does).
+fn settings_key(app_id: &str) -> windows::core::HSTRING {
+    windows::core::HSTRING::from(format!(
+        r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings\{app_id}"
+    ))
+}
+
+/// Whether "Show notification banners" is off for this app.
+pub fn banner_off(app_id: &str) -> bool {
+    use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+    let mut value = 1u32;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    // SAFETY: `value` is a writable DWORD and `size` its size; the strings outlive the call.
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            &settings_key(app_id),
+            windows::core::w!("ShowBanner"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some((&raw mut value).cast()),
+            Some(&mut size),
+        )
+    };
+    status.is_ok() && value == 0
+}
+
+/// Turns the app's banners off (`false`) or back to Windows' default (`true`).
+pub fn set_banner(app_id: &str, show: bool) {
+    use windows::Win32::System::Registry::{
+        RegDeleteKeyValueW, RegSetKeyValueW, HKEY_CURRENT_USER, REG_DWORD,
+    };
+    let key = settings_key(app_id);
+    let name = windows::core::w!("ShowBanner");
+    // SAFETY: plain registry calls on the current user's hive; `zero` outlives the call.
+    let status = unsafe {
+        if show {
+            RegDeleteKeyValueW(HKEY_CURRENT_USER, &key, name)
+        } else {
+            let zero = 0u32;
+            RegSetKeyValueW(
+                HKEY_CURRENT_USER,
+                &key,
+                name,
+                REG_DWORD.0,
+                Some((&raw const zero).cast()),
+                std::mem::size_of::<u32>() as u32,
+            )
+        }
+    };
+    if status.is_err() {
+        log::warn!("could not change banners for {app_id}: {status:?}");
+    }
 }

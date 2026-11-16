@@ -75,6 +75,7 @@ const SETTINGS: Settings = {
   edgeOffset: 0.5,
   notifications: true,
   notificationsMuted: [],
+  hideWindowsBanners: false,
   opacity: 1,
   onboarded: true,
 };

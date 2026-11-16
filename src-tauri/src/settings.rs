@@ -45,6 +45,8 @@ pub struct Settings {
     pub notifications: bool,
     /// Apps whose notifications are not shown (display names).
     pub notifications_muted: Vec<String>,
+    /// Turn off Windows' own banners for apps the island shows.
+    pub hide_windows_banners: bool,
     /// Island background opacity, 0.5–1.
     pub opacity: f64,
     /// The first-run autostart question has been answered.
@@ -71,6 +73,7 @@ impl Default for Settings {
             edge_offset: 0.5,
             notifications: true,
             notifications_muted: Vec::new(),
+            hide_windows_banners: false,
             opacity: 1.0,
             onboarded: false,
         }

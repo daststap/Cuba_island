@@ -97,6 +97,9 @@ export const ru = {
     capsPeek: "Показывать Caps Lock",
     downloads: "Показывать загрузки",
     notifications: "Показывать уведомления Windows",
+    hideWindowsBanners: "Скрывать баннеры Windows для этих приложений",
+    hideWindowsBannersHint:
+      "Остров выключит «Показывать баннеры» в параметрах Windows для приложений, чьи уведомления он показывает, и вернёт, если выключить этот пункт",
     notificationApps: "Уведомления от приложений",
     notificationAppsEmpty: "Список появится, когда приложения пришлют уведомления",
     notificationsDenied:

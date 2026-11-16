@@ -95,6 +95,7 @@ const DEFAULT_SETTINGS: Settings = {
   edgeOffset: 0.5,
   notifications: true,
   notificationsMuted: [],
+  hideWindowsBanners: false,
   opacity: 1,
   onboarded: true,
 };
@@ -1151,6 +1152,19 @@ describe("Island", () => {
         expect(calls).toContainEqual({
           cmd: "settings_set",
           args: { patch: { notificationsMuted: ["Discord"] } },
+        });
+      });
+    });
+
+    it("turns Windows banners off from settings", async () => {
+      notificationsState = { access: "allowed", items: [], apps: ["Telegram"] };
+      useIslandStore.setState({ state: { mode: "expanded", tab: "settings" } });
+      render(<Island />);
+      fireEvent.click(await screen.findByRole("switch", { name: ru.settings.hideWindowsBanners }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "settings_set",
+          args: { patch: { hideWindowsBanners: true } },
         });
       });
     });

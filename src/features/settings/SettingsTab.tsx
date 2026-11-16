@@ -385,6 +385,7 @@ function SettingsForm({ settings }: { settings: Settings }) {
       <NotificationSettings
         enabled={settings.notifications}
         muted={settings.notificationsMuted}
+        hideBanners={settings.hideWindowsBanners}
         set={set}
       />
       <Toggle
@@ -453,11 +454,17 @@ function ApiKeyRow() {
 function NotificationSettings({
   enabled,
   muted,
+  hideBanners,
   set,
 }: {
   enabled: boolean;
   muted: string[];
-  set: (patch: { notifications?: boolean; notificationsMuted?: string[] }) => void;
+  hideBanners: boolean;
+  set: (patch: {
+    notifications?: boolean;
+    notificationsMuted?: string[];
+    hideWindowsBanners?: boolean;
+  }) => void;
 }) {
   const access = useNotificationsStore((s) => s.access);
   const apps = useNotificationsStore((s) => s.apps);
@@ -484,6 +491,17 @@ function NotificationSettings({
           >
             {ru.settings.openPrivacy}
           </button>
+        </div>
+      )}
+      {enabled && access === "allowed" && (
+        <div title={ru.settings.hideWindowsBannersHint}>
+          <Toggle
+            label={ru.settings.hideWindowsBanners}
+            checked={hideBanners}
+            onChange={(hideWindowsBanners) => {
+              set({ hideWindowsBanners });
+            }}
+          />
         </div>
       )}
       {enabled && access === "allowed" && (
