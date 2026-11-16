@@ -18,6 +18,8 @@ pub struct Item {
     pub time: i64,
     /// Cached app logo (PNG path), if Windows gave one.
     pub icon: Option<String>,
+    /// Cached picture of the sender or chat, if the notification carried one.
+    pub avatar: Option<String>,
     /// The app's AppUserModelID (to open it or change its banner setting).
     #[serde(skip)]
     pub app_id: String,
@@ -89,6 +91,7 @@ mod tests {
             body: String::new(),
             time,
             icon: None,
+            avatar: None,
             app_id: String::new(),
         }
     }

@@ -142,6 +142,7 @@ fn item(notification: &UserNotification, icons: &mut Icons) -> Option<Item> {
         body,
         time,
         icon: icons.get(notification, &app_id),
+        avatar: None,
         app_id,
     })
 }

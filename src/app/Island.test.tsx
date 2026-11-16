@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1112,6 +1112,7 @@ describe("Island", () => {
       body: "Ты где?",
       time: Date.now() - 2 * 60_000,
       icon: null,
+      avatar: null,
     };
 
     it("peeks on a new notification and opens the app on click", async () => {
@@ -1128,6 +1129,19 @@ describe("Island", () => {
         expect(calls).toContainEqual({ cmd: "notifications_open", args: { id: 7 } });
       });
       expect(useIslandStore.getState().state.mode).toBe("compact");
+    });
+
+    it("shows the chat avatar with the app as a badge", async () => {
+      // The IPC mock has no asset URLs; a plain path is enough here.
+      const internals = (window as unknown as { __TAURI_INTERNALS__: Record<string, unknown> })
+        .__TAURI_INTERNALS__;
+      internals.convertFileSrc = (path: string) => path;
+      render(<Island />);
+      await act(async () => {
+        await emit("notifications://new", { ...message, avatar: "C:/cache/avatar-1.png" });
+      });
+      const peek = screen.getByRole("button", { name: ru.notifications.open("Telegram") });
+      expect(within(peek).getByTestId("app-badge")).toBeInTheDocument();
     });
 
     it("lists notifications on the home tab and dismisses them", async () => {

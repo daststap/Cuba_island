@@ -12,11 +12,13 @@
 //! Windows as soon as it has shown it, checks more often to keep the banner's
 //! flash short, and keeps its own list of recent notifications. Text is never logged.
 
+#[cfg(windows)]
+mod avatar;
 mod model;
 #[cfg(windows)]
 mod win32;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
@@ -126,8 +128,12 @@ fn watch(app: &AppHandle) {
         .app_cache_dir()
         .map(|dir| dir.join("icons"))
         .unwrap_or_default();
-    let mut icons = win32::Icons::new(icons_dir);
+    avatar::prune(&icons_dir);
+    let mut icons = win32::Icons::new(icons_dir.clone());
     let mut tracker = model::Tracker::default();
+    // Avatars by notification id; ids already looked up (with or without one).
+    let mut avatars: HashMap<u32, String> = HashMap::new();
+    let mut looked_up: HashSet<u32> = HashSet::new();
     loop {
         let (enabled, muted, hide_banners) = options(app);
         let access = win32::access();
@@ -143,7 +149,29 @@ fn watch(app: &AppHandle) {
         }
         if access == Access::Allowed {
             match win32::current(&mut icons) {
-                Ok(items) => {
+                Ok(mut items) => {
+                    // Before anything is taken out of Windows: its database still has it.
+                    let unknown: Vec<u32> = items
+                        .iter()
+                        .map(|i| i.id)
+                        .filter(|id| !looked_up.contains(id))
+                        .collect();
+                    if !unknown.is_empty() {
+                        avatars.extend(avatar::load(&unknown, &icons_dir));
+                        looked_up.extend(unknown);
+                    }
+                    for item in &mut items {
+                        item.avatar = avatars.get(&item.id).cloned();
+                    }
+                    {
+                        let keep: HashSet<u32> = items
+                            .iter()
+                            .map(|i| i.id)
+                            .chain(shared().recent.iter().map(|i| i.id))
+                            .collect();
+                        looked_up.retain(|id| keep.contains(id));
+                        avatars.retain(|id, _| keep.contains(id));
+                    }
                     let fresh = tracker.arrived(&items);
                     let mut changed = {
                         let mut state = shared();

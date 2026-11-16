@@ -514,6 +514,8 @@ export interface NotificationItem {
   time: number;
   /** Cached app logo (file path for `convertFileSrc`). */
   icon: string | null;
+  /** Cached picture of the sender or chat, when the notification carried one. */
+  avatar: string | null;
 }
 
 /** Mirrors `notifications::NotificationsState`. */

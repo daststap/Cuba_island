@@ -211,6 +211,7 @@ const NOTIFICATIONS = [
     body: "Встречаемся в 7 у входа?",
     time: Date.now() - 3 * 60_000,
     icon: null,
+    avatar: null,
   },
   {
     id: 2,
@@ -219,6 +220,7 @@ const NOTIFICATIONS = [
     body: "Пришлите, пожалуйста, до пятницы",
     time: Date.now() - 50 * 60_000,
     icon: null,
+    avatar: null,
   },
 ];
 
