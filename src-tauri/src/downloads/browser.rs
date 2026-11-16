@@ -1,7 +1,12 @@
-//! Browser downloads, seen as growing temporary files in the downloads folder:
-//! Chromium browsers (Chrome, Edge, Yandex, Opera) write `name.crdownload`,
-//! Firefox writes `name.part` (next to an empty `name` placeholder). Browsers
-//! do not reveal the final size, so only bytes and speed are known.
+//! Browser downloads, seen as temporary files being written in the downloads
+//! folder: Chromium browsers (Chrome, Edge, Yandex, Opera) write
+//! `name.crdownload`, Firefox writes `name.part` (next to an empty `name`
+//! placeholder). Browsers do not reveal the final size, so only bytes and speed
+//! are known.
+//!
+//! A file counts as active while it grows *or* its modification time moves:
+//! Chromium's parallel downloading writes several ranges at once, so the file
+//! jumps close to its full length early and then fills in without growing.
 
 use std::collections::HashMap;
 
@@ -17,6 +22,8 @@ const SPEED_SMOOTHING: f64 = 0.4;
 pub struct Partial {
     pub file: String,
     pub size: u64,
+    /// Last write, Unix ms.
+    pub modified: i64,
 }
 
 /// `report.pdf.crdownload` → `report.pdf`; `None` for other files.
@@ -33,8 +40,9 @@ pub fn final_name(file: &str) -> Option<&str> {
 struct Track {
     size: u64,
     at: i64,
-    /// When the file last grew; `None` until it has been seen growing.
-    grew_at: Option<i64>,
+    modified: i64,
+    /// When the file was last written to; `None` while it looks abandoned.
+    active_at: Option<i64>,
     speed: Option<f64>,
 }
 
@@ -54,7 +62,12 @@ impl BrowserTracker {
         finished_file: impl Fn(&str) -> bool,
     ) -> (Vec<Download>, Vec<String>) {
         let mut seen = HashMap::with_capacity(partials.len());
-        for Partial { file, size } in partials {
+        for Partial {
+            file,
+            size,
+            modified,
+        } in partials
+        {
             let track = match self.tracks.remove(&file) {
                 Some(prev) if size > prev.size => {
                     let seconds = (now - prev.at) as f64 / 1000.0;
@@ -68,19 +81,31 @@ impl BrowserTracker {
                     Track {
                         size,
                         at: now,
-                        grew_at: Some(now),
+                        modified,
+                        active_at: Some(now),
                         speed,
                     }
                 }
+                // Written to without growing (parallel ranges filling in).
+                Some(prev) if modified != prev.modified => Track {
+                    size,
+                    at: now,
+                    modified,
+                    active_at: Some(now),
+                    speed: prev.speed,
+                },
                 Some(prev) => Track {
                     size,
                     at: now,
                     ..prev
                 },
+                // First sight: active if it was written to just now (a download
+                // already running when the island started); old leftovers are not.
                 None => Track {
                     size,
                     at: now,
-                    grew_at: None,
+                    modified,
+                    active_at: (now - modified < STALL_MS).then_some(modified),
                     speed: None,
                 },
             };
@@ -91,7 +116,7 @@ impl BrowserTracker {
         let finished = self
             .tracks
             .iter()
-            .filter(|(_, t)| t.grew_at.is_some())
+            .filter(|(_, t)| t.active_at.is_some())
             .filter_map(|(file, _)| final_name(file))
             .filter(|name| finished_file(name))
             .map(str::to_owned)
@@ -101,7 +126,7 @@ impl BrowserTracker {
         let mut active: Vec<Download> = self
             .tracks
             .iter()
-            .filter(|(_, t)| t.grew_at.is_some_and(|at| now - at < STALL_MS))
+            .filter(|(_, t)| t.active_at.is_some_and(|at| now - at < STALL_MS))
             .map(|(file, t)| Download {
                 id: format!("browser:{file}"),
                 source: Source::Browser,
@@ -120,10 +145,16 @@ impl BrowserTracker {
 mod tests {
     use super::*;
 
+    /// A file whose modification time moves with its size (a plain download).
     fn part(file: &str, size: u64) -> Partial {
+        written(file, size, -(STALL_MS * 10) + size as i64)
+    }
+
+    fn written(file: &str, size: u64, modified: i64) -> Partial {
         Partial {
             file: file.into(),
             size,
+            modified,
         }
     }
 
@@ -189,5 +220,25 @@ mod tests {
         let (active, finished) = t.update(2000, Vec::new(), |name| name == "a.iso");
         assert!(active.is_empty());
         assert_eq!(finished, ["a.iso"]);
+    }
+
+    #[test]
+    fn follows_parallel_downloads_that_do_not_grow() {
+        let mut t = BrowserTracker::default();
+        // Already near full length on first sight, written a moment ago.
+        let (active, _) = t.update(
+            10_000,
+            vec![written("big.zip.crdownload", 900, 9_500)],
+            |_| false,
+        );
+        assert_eq!(active.len(), 1);
+        let (active, _) = t.update(
+            11_000,
+            vec![written("big.zip.crdownload", 900, 10_900)],
+            |_| false,
+        );
+        assert_eq!(active[0].received, 900);
+        let (_, finished) = t.update(12_000, Vec::new(), |name| name == "big.zip");
+        assert_eq!(finished, ["big.zip"]);
     }
 }

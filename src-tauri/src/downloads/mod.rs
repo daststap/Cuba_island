@@ -65,7 +65,7 @@ fn emit<P: Serialize + Clone>(app: &AppHandle, event: &str, payload: P) {
     }
 }
 
-/// Temporary download files in `dir` with their sizes.
+/// Temporary download files in `dir` with their sizes and last writes.
 fn partials(dir: &Path) -> Vec<Partial> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
@@ -75,8 +75,21 @@ fn partials(dir: &Path) -> Vec<Partial> {
         .filter_map(|entry| {
             let file = entry.file_name().to_string_lossy().into_owned();
             browser::final_name(&file)?;
-            let size = entry.metadata().ok().filter(|m| m.is_file())?.len();
-            Some(Partial { file, size })
+            // Not `entry.metadata()`: on Windows that is the directory listing's
+            // copy, which lags behind for files a browser keeps open.
+            let meta = std::fs::metadata(entry.path())
+                .ok()
+                .filter(|m| m.is_file())?;
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+            Some(Partial {
+                file,
+                size: meta.len(),
+                modified,
+            })
         })
         .collect()
 }
@@ -149,6 +162,8 @@ fn watch(app: &AppHandle) {
         cache: HashMap::new(),
     });
     let mut steam_list = Vec::new();
+    // Temporary files already logged once.
+    let mut seen_files = std::collections::HashSet::new();
     let mut tick = 0u64;
     loop {
         tick = tick.wrapping_add(1);
@@ -160,7 +175,14 @@ fn watch(app: &AppHandle) {
                     .metadata()
                     .is_ok_and(|m| m.is_file() && m.len() > 0)
             };
-            let (active, finished) = browser.update(now, partials(dir), finished_file);
+            let found = partials(dir);
+            for p in &found {
+                if seen_files.insert(p.file.clone()) {
+                    log::info!("temporary download file: {} ({} bytes)", p.file, p.size);
+                }
+            }
+            seen_files.retain(|file| found.iter().any(|p| &p.file == file));
+            let (active, finished) = browser.update(now, found, finished_file);
             list.extend(active);
             for name in finished {
                 let path = dir.join(&name).display().to_string();
