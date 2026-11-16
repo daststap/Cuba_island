@@ -3,6 +3,7 @@
 
 use std::io::{BufRead, BufReader, Read};
 
+/// Named before the rename to Cuba; hooks already in Claude Code's settings post here.
 pub const PATH: &str = "/escape/claude-code";
 const MAX_BODY: usize = 256 * 1024;
 const MAX_HEADER_LINES: usize = 64;

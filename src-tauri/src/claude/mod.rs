@@ -168,7 +168,7 @@ fn write_settings(path: &PathBuf, settings: &Value) -> AppResult<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let backup = path.with_extension("json.escape-backup");
+    let backup = path.with_extension("json.cuba-backup");
     if path.exists() && !backup.exists() {
         std::fs::copy(path, &backup)?;
     }
@@ -203,7 +203,7 @@ pub fn claude_hooks_status(app: AppHandle, shared: State<'_, Shared>) -> AppResu
     })
 }
 
-/// Adds (`true`) or removes (`false`) Escape's hooks in Claude Code's settings.
+/// Adds (`true`) or removes (`false`) Cuba's hooks in Claude Code's settings.
 #[tauri::command]
 pub fn claude_hooks_set(
     enabled: bool,

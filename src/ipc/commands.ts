@@ -239,7 +239,7 @@ export function claudeHooksStatus(): Promise<ClaudeHooksStatus> {
   return invoke("claude_hooks_status");
 }
 
-/** Adds or removes Escape's hooks in Claude Code's settings.json. */
+/** Adds or removes Cuba's hooks in Claude Code's settings.json. */
 export function claudeHooksSet(enabled: boolean): Promise<ClaudeHooksStatus> {
   return invoke("claude_hooks_set", { enabled });
 }

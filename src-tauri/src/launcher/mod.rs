@@ -42,13 +42,13 @@ fn app_keywords(id: &str) -> &'static str {
 
 /// Built-in commands: id and words they are found by (the label lives in `ru.ts`).
 const COMMANDS: &[(&str, &str)] = &[
-    ("cmd:settings", "Настройки Escape settings"),
+    ("cmd:settings", "Настройки Cuba settings"),
     (
         "cmd:screenshot",
         "Скриншот области экрана снимок screenshot",
     ),
     ("cmd:lock", "Заблокировать компьютер lock"),
-    ("cmd:quit", "Выйти из Escape quit exit"),
+    ("cmd:quit", "Выйти из Cuba quit exit"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]

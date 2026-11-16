@@ -153,8 +153,8 @@ const SHELF: ShelfItem[] = [
   },
   {
     id: 3,
-    path: "D:\\projects\\escape",
-    name: "escape",
+    path: "D:\\projects\\cuba",
+    name: "cuba",
     isDir: true,
     size: null,
     missing: false,

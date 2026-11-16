@@ -29,7 +29,7 @@ use stream::Update;
 const MAX_INPUT: usize = 20_000;
 
 /// Shared by both providers.
-const SYSTEM: &str = "You are an AI assistant built into Escape, a Dynamic Island for Windows. \
+const SYSTEM: &str = "You are an AI assistant built into Cuba, a Dynamic Island for Windows. \
 The user asks quick questions from a small panel at the top of the screen. \
 Answer briefly and to the point, in the language the user writes in. \
 Replies are shown as plain text: do not use Markdown headings, tables or bold; \

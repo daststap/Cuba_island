@@ -1,5 +1,5 @@
 [package]
-name = "escape"
+name = "cuba"
 version = "1.0.0"
 description = "Dynamic Island for Windows"
 authors = ["vsevolod"]
@@ -11,7 +11,7 @@ rust-version = "1.80"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "escape_lib"
+name = "cuba_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

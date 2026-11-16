@@ -32,7 +32,7 @@ fn log_plugin<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri_plugin_log::Builder::new()
         .targets([
             Target::new(TargetKind::LogDir {
-                file_name: Some("escape".into()),
+                file_name: Some("cuba".into()),
             }),
             Target::new(TargetKind::Stdout),
         ])
@@ -127,7 +127,7 @@ pub fn run() {
             screenshot::screenshot_close,
         ])
         .setup(|app| {
-            log::info!("Escape {} started", env!("CARGO_PKG_VERSION"));
+            log::info!("Cuba {} started", env!("CARGO_PKG_VERSION"));
             let handle = app.handle();
             let settings = settings::load(handle);
             // Early: the island page is already loading and asks for the chat right away.
@@ -153,8 +153,8 @@ pub fn run() {
 
     if let Err(err) = result {
         // The logger may not be initialised if startup failed early, so print as well.
-        eprintln!("fatal: failed to run Escape: {err}");
-        log::error!("fatal: failed to run Escape: {err}");
+        eprintln!("fatal: failed to run Cuba: {err}");
+        log::error!("fatal: failed to run Cuba: {err}");
         std::process::exit(1);
     }
 }

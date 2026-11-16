@@ -5,7 +5,7 @@ import { reportError, shelfList, type ShelfItem } from "../../ipc/commands";
 import { onShelfChanged } from "../../ipc/events";
 
 /** Must match `MESSAGE` in `src-tauri/src/shelf/mod.rs`. */
-export const SHELF_DROP_MESSAGE = "escape://shelf-drop";
+export const SHELF_DROP_MESSAGE = "cuba://shelf-drop";
 
 interface ShelfStore {
   items: ShelfItem[];

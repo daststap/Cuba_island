@@ -149,7 +149,7 @@ mod web_drop {
     use crate::error::{AppError, AppResult};
 
     /// Must match `SHELF_DROP_MESSAGE` in `src/features/shelf/store.ts`.
-    const MESSAGE: &str = "escape://shelf-drop";
+    const MESSAGE: &str = "cuba://shelf-drop";
 
     /// Reads and frees a COM-allocated wide string.
     fn take_string(raw: PWSTR) -> Option<String> {

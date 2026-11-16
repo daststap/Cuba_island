@@ -19,9 +19,9 @@ pub fn create(app: &AppHandle) -> AppResult<()> {
         .cloned()
         .ok_or_else(|| AppError::Internal("нет иконки приложения".into()))?;
 
-    TrayIconBuilder::with_id("escape")
+    TrayIconBuilder::with_id("cuba")
         .icon(icon)
-        .tooltip("Escape")
+        .tooltip("Cuba")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {

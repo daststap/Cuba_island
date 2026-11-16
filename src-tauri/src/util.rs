@@ -64,7 +64,7 @@ mod tests {
 
     #[test]
     fn makes_data_urls_of_small_pictures() {
-        let dir = std::env::temp_dir().join(format!("escape-util-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cuba-util-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let png = dir.join("a.png");
         std::fs::write(&png, [0x89, b'P', b'N', b'G', 1, 2]).unwrap();

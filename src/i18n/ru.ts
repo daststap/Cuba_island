@@ -1,6 +1,6 @@
 /** All UI strings live here (PLAN.md §6). */
 export const ru = {
-  appName: "Escape",
+  appName: "Cuba",
   tabs: {
     home: "Главная",
     notes: "Заметки",
@@ -52,12 +52,12 @@ export const ru = {
     webSubtitle: "Яндекс",
     askTitle: (query: string) => `Спросить Claude: ${query}`,
     askSubtitle: "Ответ — во вкладке «Чат»",
-    command: "Команда Escape",
+    command: "Команда Cuba",
     commands: {
-      "cmd:settings": "Настройки Escape",
+      "cmd:settings": "Настройки Cuba",
       "cmd:screenshot": "Скриншот области",
       "cmd:lock": "Заблокировать компьютер",
-      "cmd:quit": "Выйти из Escape",
+      "cmd:quit": "Выйти из Cuba",
     } as Record<string, string>,
   },
   hotkeys: {
@@ -110,7 +110,7 @@ export const ru = {
     keySaved: "сохранён в диспетчере учётных данных Windows",
     removeKey: "Удалить ключ",
     opacity: "Непрозрачность острова",
-    version: (v: string) => `Escape ${v}`,
+    version: (v: string) => `Cuba ${v}`,
     checkUpdates: "Проверить обновления",
     upToDate: "Установлена последняя версия",
     installUpdate: (v: string) => `Обновить до ${v}`,
@@ -258,7 +258,7 @@ export const ru = {
     count: (n: number) => `Файлов на полке: ${String(n)}`,
   },
   onboarding: {
-    question: "Запускать Escape вместе с Windows?",
+    question: "Запускать Cuba вместе с Windows?",
     hint: "Изменить можно в любой момент в настройках или через иконку в трее.",
     yes: "Да",
     no: "Нет",
