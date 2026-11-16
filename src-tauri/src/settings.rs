@@ -35,6 +35,8 @@ pub struct Settings {
     pub caps_peek: bool,
     /// Downloads in the pill and on the home tab.
     pub downloads: bool,
+    /// Model for the AI chat (one of `chat::MODELS`).
+    pub chat_model: String,
     /// Island background opacity, 0.5–1.
     pub opacity: f64,
     /// The first-run autostart question has been answered.
@@ -56,6 +58,7 @@ impl Default for Settings {
             privacy_dots: true,
             caps_peek: true,
             downloads: true,
+            chat_model: crate::chat::MODELS[0].to_owned(),
             opacity: 1.0,
             onboarded: false,
         }
@@ -87,6 +90,12 @@ impl Settings {
                 "прозрачность должна быть от 50 до 100%".into(),
             ));
         }
+        if !crate::chat::MODELS.contains(&self.chat_model.as_str()) {
+            return Err(AppError::InvalidArgument(format!(
+                "неизвестная модель {}",
+                self.chat_model
+            )));
+        }
         Ok(())
     }
 
@@ -116,6 +125,18 @@ impl Settings {
 }
 
 pub type SettingsState = Mutex<Settings>;
+
+/// The chat model currently chosen in settings.
+pub fn chat_model(app: &AppHandle) -> String {
+    app.try_state::<SettingsState>()
+        .map(|s| {
+            s.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .chat_model
+                .clone()
+        })
+        .unwrap_or_else(|| crate::chat::MODELS[0].to_owned())
+}
 
 /// Loads settings (defaults if missing or broken) and registers them as state.
 pub fn load(app: &AppHandle) -> Settings {

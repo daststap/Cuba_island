@@ -1,5 +1,6 @@
 //! Application assembly: plugins, commands and startup.
 
+mod chat;
 mod claude;
 mod clipboard;
 mod downloads;
@@ -106,6 +107,11 @@ pub fn run() {
             notes::timer_silence,
             indicators::indicators_get,
             downloads::downloads_list,
+            chat::chat_get,
+            chat::chat_send,
+            chat::chat_stop,
+            chat::chat_new,
+            chat::chat_set_key,
             downloads::downloads_reveal,
             screenshot::screenshot_start,
             screenshot::screenshot_frame,
@@ -134,6 +140,7 @@ pub fn run() {
             claude::start(handle);
             indicators::start(handle);
             downloads::start(handle);
+            chat::start(handle)?;
             tray::create(handle)?;
             Ok(())
         })
