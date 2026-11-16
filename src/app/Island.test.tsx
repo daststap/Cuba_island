@@ -70,11 +70,11 @@ const DEFAULT_HOTKEYS: HotkeyStatus = {
   launcherFallback: false,
 };
 const RESULTS: LaunchResult[] = [
-  { id: "calc:6", kind: "calc", title: "6", iconPath: null },
-  { id: "app:Chrome", kind: "app", title: "Google Chrome", iconPath: null },
-  { id: "cmd:lock", kind: "command", title: "", iconPath: null },
-  { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
-  { id: "ask:2+2*2", kind: "ask", title: "2+2*2", iconPath: null },
+  { id: "calc:6", kind: "calc", title: "6", icon: null },
+  { id: "app:Chrome", kind: "app", title: "Google Chrome", icon: null },
+  { id: "cmd:lock", kind: "command", title: "", icon: null },
+  { id: "web:2+2*2", kind: "web", title: "2+2*2", icon: null },
+  { id: "ask:2+2*2", kind: "ask", title: "2+2*2", icon: null },
 ];
 
 const DEFAULT_SETTINGS: Settings = {

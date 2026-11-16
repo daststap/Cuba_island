@@ -126,7 +126,8 @@ export interface LaunchResult {
   kind: "app" | "command" | "calc" | "web" | "ask";
   /** App name, calculator answer or search query (commands are labelled in `ru.ts`). */
   title: string;
-  iconPath: string | null;
+  /** App icon as a `data:` URL. */
+  icon: string | null;
 }
 
 export function launcherSearch(query: string): Promise<LaunchResult[]> {

@@ -199,8 +199,8 @@ const NOTES: Note[] = [
 ];
 
 const LAUNCH: LaunchResult[] = [
-  { id: "calc:6", kind: "calc", title: "6", iconPath: null },
-  { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
+  { id: "calc:6", kind: "calc", title: "6", icon: null },
+  { id: "web:2+2*2", kind: "web", title: "2+2*2", icon: null },
 ];
 
 const NOTIFICATIONS = [

@@ -35,7 +35,7 @@
       "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/clips/**", "$APPCACHE/icons/**", "$APPCACHE/shelf/**"]
+        "scope": ["$APPDATA/clips/**", "$APPCACHE/shelf/**"]
       }
     }
   },

@@ -1,4 +1,3 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useIslandStore } from "../../app/store";
 import { ru } from "../../i18n/ru";
@@ -54,8 +53,8 @@ const GLYPHS: Record<Exclude<LaunchResult["kind"], "app">, string> = {
 
 function Icon({ result }: { result: LaunchResult }): ReactNode {
   if (result.kind === "app") {
-    return result.iconPath ? (
-      <img src={convertFileSrc(result.iconPath)} alt="" className="h-8 w-8 shrink-0" />
+    return result.icon ? (
+      <img src={result.icon} alt="" className="h-8 w-8 shrink-0" />
     ) : (
       <span className="h-8 w-8 shrink-0 rounded-lg bg-white/10" />
     );
