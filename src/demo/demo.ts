@@ -71,6 +71,8 @@ const SETTINGS: Settings = {
   capsPeek: true,
   downloads: true,
   chatModel: "claude-haiku-5-5",
+  edge: "top",
+  edgeOffset: 0.5,
   notifications: true,
   notificationsMuted: [],
   opacity: 1,
@@ -357,6 +359,17 @@ export async function setupDemo(scene: Scene): Promise<void> {
             items: scene === "home" ? NOTIFICATIONS : [],
             apps: ["Telegram", "Почта"],
           };
+        case "island_placement": {
+          // `&edge=left` shows the island on another edge.
+          const edge = new URLSearchParams(window.location.search).get("edge");
+          if (!edge) return null;
+          const side = edge === "left" || edge === "right";
+          return {
+            edge,
+            anchor: (side ? window.innerHeight : window.innerWidth) / 2,
+            dragging: false,
+          };
+        }
         case "downloads_list":
           return scene === "home" || scene === "downloads" ? DOWNLOADS : [];
         case "screenshot_frame":

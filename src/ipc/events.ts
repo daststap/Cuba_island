@@ -8,6 +8,7 @@ import type {
   ChatDone,
   Download,
   FinishedDownload,
+  IslandPlacement,
   NotificationItem,
   NotificationsState,
   ClaudeSession,
@@ -32,6 +33,7 @@ interface EventMap {
   "island://hover": HoverPayload;
   "island://edge-push": null;
   "island://visibility": VisibilityPayload;
+  "island://placement": IslandPlacement;
   "system://battery": Battery | null;
   "media://changed": MediaState | null;
   "clipboard://added": ClipItem;
@@ -141,3 +143,6 @@ export const onNotification = (handler: (item: NotificationItem) => void) =>
 
 export const onNotificationsList = (handler: (state: NotificationsState) => void) =>
   subscribe("notifications://list", handler);
+
+export const onPlacement = (handler: (placement: IslandPlacement) => void) =>
+  subscribe("island://placement", handler);

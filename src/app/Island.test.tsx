@@ -91,6 +91,8 @@ const DEFAULT_SETTINGS: Settings = {
   capsPeek: true,
   downloads: true,
   chatModel: "claude-haiku-5-5",
+  edge: "top",
+  edgeOffset: 0.5,
   notifications: true,
   notificationsMuted: [],
   opacity: 1,
@@ -1160,6 +1162,63 @@ describe("Island", () => {
       fireEvent.click(await screen.findByRole("button", { name: ru.settings.openPrivacy }));
       await vi.waitFor(() => {
         expect(calls.some((c) => c.cmd === "notifications_open_settings")).toBe(true);
+      });
+    });
+  });
+
+  describe("placement", () => {
+    beforeEach(() => {
+      // jsdom has no PointerEvent; mouse events carry the coordinates.
+      vi.stubGlobal("PointerEvent", MouseEvent);
+    });
+
+    const islandElement = () => document.querySelector("[data-edge]") as HTMLElement;
+    const pull = (from: Element, dx = 20) => {
+      fireEvent.pointerDown(from, { button: 0, screenX: 100, screenY: 10 });
+      fireEvent.pointerMove(from, { screenX: 100 + dx, screenY: 10 });
+    };
+    const dragged = () => calls.some((c) => c.cmd === "island_drag_start");
+
+    it("starts a drag when the pill is pulled, not on a tiny wobble", async () => {
+      render(<Island />);
+      const island = islandElement();
+      pull(island, 3);
+      expect(dragged()).toBe(false);
+      pull(island);
+      await vi.waitFor(() => {
+        expect(dragged()).toBe(true);
+      });
+    });
+
+    it("drags the open panel only by its top bar", async () => {
+      useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
+      render(<Island />);
+      pull(await screen.findByRole("tabpanel"));
+      expect(dragged()).toBe(false);
+      pull(document.querySelector("[data-drag-handle]") as Element);
+      await vi.waitFor(() => {
+        expect(dragged()).toBe(true);
+      });
+      expect(useIslandStore.getState().state.mode).toBe("compact");
+    });
+
+    it("moves to the edge Rust reports", async () => {
+      render(<Island />);
+      expect(islandElement()).toHaveAttribute("data-edge", "top");
+      await act(async () => {
+        await emit("island://placement", { edge: "left", anchor: 300, dragging: false });
+      });
+      expect(islandElement()).toHaveAttribute("data-edge", "left");
+    });
+
+    it("picks the edge in settings", async () => {
+      useIslandStore.setState({ state: { mode: "expanded", tab: "settings" } });
+      render(<Island />);
+      fireEvent.change(await screen.findByRole("combobox", { name: ru.settings.edge }), {
+        target: { value: "bottom" },
+      });
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "settings_set", args: { patch: { edge: "bottom" } } });
       });
     });
   });

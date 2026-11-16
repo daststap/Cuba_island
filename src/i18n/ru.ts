@@ -67,6 +67,14 @@ export const ru = {
   },
   settings: {
     monitor: "Монитор",
+    edge: "Край экрана",
+    edgeHint:
+      "Остров можно просто перетащить: зажмите пилюлю (или верхнюю полосу открытой панели) и тяните",
+    edges: { top: "Сверху", bottom: "Снизу", left: "Слева", right: "Справа" } as Record<
+      string,
+      string
+    >,
+    edgeCentre: "По центру",
     primaryMonitor: "Основной",
     monitorLabel: (index: number, w: number, h: number, primary: boolean) =>
       `Монитор ${String(index)} — ${String(w)}×${String(h)}${primary ? " (основной)" : ""}`,

@@ -173,6 +173,10 @@ export interface Settings {
   downloads: boolean;
   /** One of CHAT_MODELS. */
   chatModel: string;
+  /** Screen edge the island is attached to. */
+  edge: ScreenEdge;
+  /** Position along that edge, 0–1. */
+  edgeOffset: number;
   /** Windows notifications in the island. */
   notifications: boolean;
   /** Apps whose notifications are not shown (display names). */
@@ -536,4 +540,25 @@ export function notificationsDismiss(id: number): Promise<void> {
 /** Opens Windows' privacy page for notification access. */
 export function notificationsOpenSettings(): Promise<void> {
   return invoke("notifications_open_settings");
+}
+
+/** Mirrors `window::Edge`. */
+export type ScreenEdge = "top" | "bottom" | "left" | "right";
+
+/** Mirrors `window::IslandPlacement`. */
+export interface IslandPlacement {
+  edge: ScreenEdge;
+  /** The island centre along the edge, logical px from the window's left (top/bottom) or top. */
+  anchor: number;
+  /** Being dragged: a floating pill centred in the window. */
+  dragging: boolean;
+}
+
+export function islandPlacement(): Promise<IslandPlacement | null> {
+  return invoke("island_placement");
+}
+
+/** Moves the island with the cursor until the button is released; Rust snaps and saves it. */
+export function islandDragStart(): Promise<void> {
+  return invoke("island_drag_start");
 }

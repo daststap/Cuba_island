@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, type MotionStyle, type Transition } from "motion/react";
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { BatteryIndicator } from "../features/battery/BatteryIndicator";
 import { useClaudeStore, useClaudeSync } from "../features/claude/store";
 import { ClaudeBadge, ClaudePeek, ClaudeSessions } from "../features/claude/views";
@@ -36,8 +36,16 @@ import { TABS, type IslandState, type Tab } from "./islandMachine";
 import { useIslandStore } from "./store";
 import { useIslandEvents } from "./useIslandEvents";
 import { useIslandRect } from "./useIslandRect";
+import { islandBox } from "./placement";
+import {
+  islandDragStart,
+  islandPlacement,
+  reportError,
+  type IslandPlacement,
+} from "../ipc/commands";
+import { onPlacement } from "../ipc/events";
 
-/** Island shapes. The island sits flush against the top edge: only bottom corners round. */
+/** Island shapes; the corners against the screen edge stay square (see placement.ts). */
 const SHAPES = {
   compact: { width: 200, height: 36, radius: 18 },
   peek: { width: 360, height: 68, radius: 28 },
@@ -50,6 +58,42 @@ const SHAPES = {
 
 const SPRING: Transition = { type: "spring", stiffness: 420, damping: 34, mass: 0.9 };
 const FADE: Transition = { duration: 0.14 };
+
+/** Elements a press must not start a drag from (they have their own gestures). */
+const NO_DRAG =
+  "button, input, textarea, select, a, [role=tab], [role=slider], [role=spinbutton], [role=option], .select-text";
+/** Pointer travel (px) before a press becomes a drag. */
+const DRAG_SLOP = 6;
+
+/** Where Rust put the island (edge and point along it). */
+function usePlacement(): IslandPlacement | null {
+  const [placement, setPlacement] = useState<IslandPlacement | null>(null);
+  useEffect(() => {
+    islandPlacement()
+      .then((p) => {
+        if (p) setPlacement(p);
+      })
+      .catch((error: unknown) => {
+        reportError("island_placement", error);
+      });
+    return onPlacement(setPlacement);
+  }, []);
+  return placement;
+}
+
+function useViewport() {
+  const [view, setView] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  useEffect(() => {
+    const onResize = () => {
+      setView({ w: window.innerWidth, h: window.innerHeight });
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
+  return view;
+}
 
 /** Tells the user once that a newer version is out. */
 function announceUpdate(update: UpdateInfo) {
@@ -80,7 +124,9 @@ export function Island() {
   const onboarding = useSettingsStore((s) => s.settings !== null && !s.settings.onboarded);
   const glow = useCoverColor(media?.cover ?? null);
   const ref = useRef<HTMLDivElement>(null);
-  useIslandRect(ref);
+  const placement = usePlacement();
+  const view = useViewport();
+  const dragFrom = useRef<{ x: number; y: number } | null>(null);
 
   const peekKind = state.mode === "peek" ? state.kind : null;
   // A peek whose content is gone (player closed, toast expired) shows as compact.
@@ -109,6 +155,35 @@ export function Island() {
                 ? SHAPES.claudePeek
                 : SHAPES.peek
         : SHAPES.compact;
+  const compact = mode === "compact" || mode === "hidden";
+  const box = islandBox(shape, placement, view, compact);
+  useIslandRect(
+    ref,
+    `${placement?.edge ?? ""}:${String(placement?.anchor ?? "")}:${String(placement?.dragging ?? "")}`,
+  );
+
+  // Press and pull: the pill from anywhere, the open panel by its top bar.
+  const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    const target = e.target as Element;
+    if (e.button !== 0 || target.closest(NO_DRAG)) return;
+    if (state.mode === "expanded" && !target.closest("[data-drag-handle]")) return;
+    dragFrom.current = { x: e.screenX, y: e.screenY };
+  };
+  const onPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const from = dragFrom.current;
+    if (!from || Math.hypot(e.screenX - from.x, e.screenY - from.y) < DRAG_SLOP) return;
+    dragFrom.current = null;
+    const island = useIslandStore.getState();
+    if (island.inputMode) island.leaveInput();
+    dispatch({ type: "collapse" });
+    islandDragStart().catch((error: unknown) => {
+      reportError("island_drag_start", error);
+    });
+  };
+  const endPress = () => {
+    dragFrom.current = null;
+  };
+
   const glowAlpha = media?.isPlaying ? 0.55 : 0.3;
   const shadow = glow
     ? `0 6px 30px -6px rgb(${glow.join(" ")} / ${String(glowAlpha)}), var(--island-shadow)`
@@ -156,11 +231,16 @@ export function Island() {
   }
 
   return (
-    <div className="flex h-full justify-center">
+    <div className="relative h-full w-full">
       <motion.div
         ref={ref}
         data-mode={mode}
-        className="relative overflow-hidden bg-[var(--island-bg)] text-[var(--island-fg)] transition-shadow duration-700"
+        data-edge={placement?.edge ?? "top"}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endPress}
+        onPointerLeave={endPress}
+        className="absolute overflow-hidden bg-[var(--island-bg)] text-[var(--island-fg)] transition-shadow duration-700"
         style={
           {
             boxShadow: shadow,
@@ -169,10 +249,14 @@ export function Island() {
         }
         initial={false}
         animate={{
-          width: shape.width,
-          height: shape.height,
-          borderBottomLeftRadius: shape.radius,
-          borderBottomRightRadius: shape.radius,
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+          borderTopLeftRadius: box.borderTopLeftRadius,
+          borderTopRightRadius: box.borderTopRightRadius,
+          borderBottomLeftRadius: box.borderBottomLeftRadius,
+          borderBottomRightRadius: box.borderBottomRightRadius,
         }}
         transition={SPRING}
       >
@@ -184,7 +268,21 @@ export function Island() {
             animate={{ opacity: 1, transition: { ...FADE, delay: 0.07 } }}
             exit={{ opacity: 0, transition: FADE }}
           >
-            {content}
+            {box.rotate ? (
+              // An upright pill on a side edge: the usual pill content, turned to run along it.
+              <div
+                className="absolute top-1/2 left-1/2"
+                style={{
+                  width: shape.width,
+                  height: shape.height,
+                  transform: `translate(-50%, -50%) rotate(${String(box.rotate)}deg)`,
+                }}
+              >
+                {content}
+              </div>
+            ) : (
+              content
+            )}
           </motion.div>
         </AnimatePresence>
         <AnimatePresence>
@@ -245,7 +343,7 @@ function ExpandedView({
   const player = tab === "home" && media;
   return (
     <div className="flex h-full flex-col px-6 pt-3 pb-6">
-      <div className="relative flex items-center justify-center">
+      <div data-drag-handle className="relative flex cursor-grab items-center justify-center">
         <div className="absolute left-0 flex items-center gap-1.5 text-xs text-[var(--island-muted)]">
           {player && <Clock className="font-semibold text-[var(--island-fg)]" />}
           <ScreenshotButton />

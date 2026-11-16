@@ -4,6 +4,7 @@ import { useIslandStore } from "../../app/store";
 import { ru } from "../../i18n/ru";
 import {
   CHAT_MODELS,
+  type ScreenEdge,
   notificationsOpenSettings,
   clipboardClear,
   hotkeysPause,
@@ -243,6 +244,33 @@ function SettingsForm({ settings }: { settings: Settings }) {
           </select>
         </Row>
       )}
+      <Row label={ru.settings.edge}>
+        <select
+          aria-label={ru.settings.edge}
+          title={ru.settings.edgeHint}
+          className={control}
+          value={settings.edge}
+          onChange={(e) => {
+            set({ edge: e.target.value as ScreenEdge });
+          }}
+        >
+          {(["top", "bottom", "left", "right"] as const).map((edge) => (
+            <option key={edge} value={edge}>
+              {ru.settings.edges[edge]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          disabled={settings.edgeOffset === 0.5}
+          className="rounded-lg bg-white/10 px-2 py-1 text-xs hover:bg-white/20 disabled:opacity-40"
+          onClick={() => {
+            set({ edgeOffset: 0.5 });
+          }}
+        >
+          {ru.settings.edgeCentre}
+        </button>
+      </Row>
       <Toggle
         label={ru.settings.autostart}
         checked={settings.autostart}
