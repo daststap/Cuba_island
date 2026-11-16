@@ -2,9 +2,17 @@
  * Island states and transitions (PLAN.md §4.6). Pure: no timers, no IPC.
  */
 
-export type Tab = "home" | "notes" | "shelf" | "clipboard" | "launcher" | "settings";
+export type Tab = "home" | "notes" | "chat" | "shelf" | "clipboard" | "launcher" | "settings";
 
-export const TABS: readonly Tab[] = ["home", "notes", "shelf", "clipboard", "launcher", "settings"];
+export const TABS: readonly Tab[] = [
+  "home",
+  "notes",
+  "chat",
+  "shelf",
+  "clipboard",
+  "launcher",
+  "settings",
+];
 
 /**
  * What a peek is about: a track change, a fresh copy, a message, Claude Code waiting,

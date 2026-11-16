@@ -7,6 +7,8 @@ import { ClipboardPeek, ClipboardTab } from "../features/clipboard/ClipboardTab"
 import { useClipboardSync } from "../features/clipboard/store";
 import { Clock, LongDate } from "../features/clock/Clock";
 import { useIndicatorsSync } from "../features/indicators/store";
+import { ChatTab } from "../features/chat/ChatTab";
+import { useChatSync } from "../features/chat/store";
 import {
   useDownloadsStore,
   useDownloadsSync,
@@ -61,6 +63,7 @@ export function Island() {
   useNotesSync();
   useIndicatorsSync();
   useDownloadsSync();
+  useChatSync();
   useSettingsSync(announceUpdate);
   const state = useIslandStore((s) => s.state);
   const dispatch = useIslandStore((s) => s.dispatch);
@@ -247,7 +250,7 @@ function ExpandedView({
               onClick={() => {
                 onSelect(t);
               }}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
                 t === tab
                   ? "bg-white/15 text-[var(--island-fg)]"
                   : "text-[var(--island-muted)] hover:bg-white/8 hover:text-[var(--island-fg)]"
@@ -279,6 +282,8 @@ function ExpandedView({
           </>
         ) : tab === "notes" ? (
           <NotesTab />
+        ) : tab === "chat" ? (
+          <ChatTab />
         ) : tab === "shelf" ? (
           <ShelfTab />
         ) : tab === "clipboard" ? (

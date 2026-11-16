@@ -121,9 +121,9 @@ export function getBattery(): Promise<Battery | null> {
 
 /** Mirrors `launcher::LaunchResult`. */
 export interface LaunchResult {
-  /** `app:…`, `cmd:…`, `calc:…` or `web:…` — passed back to `launcherRun`. */
+  /** `app:…`, `cmd:…`, `calc:…`, `web:…` or `ask:…` — passed back to `launcherRun`. */
   id: string;
-  kind: "app" | "command" | "calc" | "web";
+  kind: "app" | "command" | "calc" | "web" | "ask";
   /** App name, calculator answer or search query (commands are labelled in `ru.ts`). */
   title: string;
   iconPath: string | null;
@@ -171,6 +171,8 @@ export interface Settings {
   capsPeek: boolean;
   /** Downloads in the pill and on the home tab. */
   downloads: boolean;
+  /** One of CHAT_MODELS. */
+  chatModel: string;
   /** 0.5–1 */
   opacity: number;
   onboarded: boolean;
@@ -436,4 +438,50 @@ export function downloadsList(): Promise<Download[]> {
 /** Opens Explorer with the file selected. */
 export function downloadsReveal(path: string): Promise<void> {
   return invoke("downloads_reveal", { path });
+}
+
+/** Models offered for the chat (mirrors `chat::MODELS`); the first is the default. */
+export const CHAT_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"] as const;
+
+/** Mirrors `chat::ChatMessage`. */
+export interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+/** Mirrors `chat::ChatState`. */
+export interface ChatState {
+  messages: ChatMessage[];
+  streaming: boolean;
+  /** An API key is saved (the key itself never leaves Rust). */
+  hasKey: boolean;
+}
+
+/** Mirrors `chat::ChatDone`. */
+export interface ChatDone {
+  error: string | null;
+  refused: boolean;
+  truncated: boolean;
+}
+
+export function chatGet(): Promise<ChatState> {
+  return invoke("chat_get");
+}
+
+/** Sends a message; the reply streams as `chat://delta`, then `chat://done`. */
+export function chatSend(text: string): Promise<ChatState> {
+  return invoke("chat_send", { text });
+}
+
+export function chatStop(): Promise<void> {
+  return invoke("chat_stop");
+}
+
+export function chatNew(): Promise<ChatState> {
+  return invoke("chat_new");
+}
+
+/** Saves the API key in Windows Credential Manager; an empty string removes it. */
+export function chatSetKey(key: string): Promise<ChatState> {
+  return invoke("chat_set_key", { key });
 }

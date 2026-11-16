@@ -5,6 +5,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   Battery,
+  ChatDone,
   Download,
   FinishedDownload,
   ClaudeSession,
@@ -47,6 +48,8 @@ interface EventMap {
   "indicators://caps-lock": boolean;
   "downloads://changed": Download[];
   "downloads://finished": FinishedDownload;
+  "chat://delta": string;
+  "chat://done": ChatDone;
 }
 
 function subscribe<K extends keyof EventMap>(
@@ -124,3 +127,7 @@ export const onDownloads = (handler: (items: Download[]) => void) =>
 
 export const onDownloadFinished = (handler: (item: FinishedDownload) => void) =>
   subscribe("downloads://finished", handler);
+
+export const onChatDelta = (handler: (text: string) => void) => subscribe("chat://delta", handler);
+
+export const onChatDone = (handler: (done: ChatDone) => void) => subscribe("chat://done", handler);
