@@ -10,7 +10,7 @@ export const TABS: readonly Tab[] = ["home", "notes", "shelf", "clipboard", "lau
  * What a peek is about: a track change, a fresh copy, a message, Claude Code waiting,
  * or an alert (reminder due / timer done) that stays until the user reacts.
  */
-export type PeekKind = "media" | "clipboard" | "toast" | "claude" | "alert" | "caps";
+export type PeekKind = "media" | "clipboard" | "toast" | "claude" | "alert" | "caps" | "download";
 
 export type IslandState =
   | { mode: "hidden" }

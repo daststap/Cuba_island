@@ -17,6 +17,7 @@ export const PEEK_DURATION_MS: Record<PeekKind, number> = {
   // Reminders and finished timers stay until the user reacts.
   alert: Number.POSITIVE_INFINITY,
   caps: 1500,
+  download: 4000,
 };
 
 interface IslandStore {
