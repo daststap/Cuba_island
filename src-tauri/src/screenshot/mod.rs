@@ -106,7 +106,7 @@ fn open(app: &AppHandle) -> AppResult<()> {
 
     let window =
         tauri::WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html?snip".into()))
-            .title("Escape")
+            .title("Cuba")
             .decorations(false)
             .always_on_top(true)
             .skip_taskbar(true)

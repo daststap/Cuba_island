@@ -1,16 +1,24 @@
 //! Windows notifications in the island (PLAN.md stage 6).
 //!
-//! The Notification Center is read every 1.5 s through `UserNotificationListener`
-//! (no package or certificate needed on current Windows 11). New notifications
-//! raise `notifications://new` (a peek); the list of what is in the center goes
-//! out as `notifications://list`. Opening or dismissing one in the island also
-//! removes it from the Notification Center. Text is never logged.
+//! The Notification Center is read through `UserNotificationListener` (no
+//! package or certificate needed on current Windows 11). New notifications raise
+//! `notifications://new` (a peek); the list goes out as `notifications://list`.
+//! Opening or dismissing one in the island also removes it from Windows.
+//!
+//! "Hide Windows banners": Windows offers no way to switch another app's banners
+//! off on the fly (writing its `ShowBanner` setting only applies after a restart
+//! of the notification service), but removing a notification also closes its
+//! banner. So with that option the island takes each new notification out of
+//! Windows as soon as it has shown it, checks more often to keep the banner's
+//! flash short, and keeps its own list of recent notifications. Text is never logged.
 
+#[cfg(windows)]
+mod avatar;
 mod model;
 #[cfg(windows)]
 mod win32;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
@@ -22,8 +30,13 @@ use crate::thread::spawn_supervised;
 pub use model::Item;
 
 const POLL: Duration = Duration::from_millis(1500);
+/// While banners are being hidden: the sooner a notification is taken out of
+/// Windows, the shorter its banner flashes.
+const FAST_POLL: Duration = Duration::from_millis(400);
 /// How many notifications the home tab lists.
 const LIST_LIMIT: usize = 5;
+/// Notifications the island keeps itself (after taking them out of Windows).
+const RECENT_LIMIT: usize = 20;
 
 /// Whether Windows lets the island read notifications. Mirrored in `src/ipc/commands.ts`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -39,7 +52,7 @@ pub enum Access {
 #[serde(rename_all = "camelCase")]
 pub struct NotificationsState {
     pub access: Access,
-    /// In the Notification Center, newest first, without muted apps.
+    /// Recent notifications, newest first, without muted apps.
     pub items: Vec<Item>,
     /// Every app seen sending notifications (for the settings switches).
     pub apps: Vec<String>,
@@ -49,12 +62,15 @@ struct Shared {
     access: Access,
     /// Everything in the center at the last look (muted apps included).
     all: Vec<Item>,
+    /// Shown notifications the island took out of Windows (newest first).
+    recent: Vec<Item>,
     apps: BTreeSet<String>,
 }
 
 static STATE: Mutex<Shared> = Mutex::new(Shared {
     access: Access::Unspecified,
     all: Vec::new(),
+    recent: Vec::new(),
     apps: BTreeSet::new(),
 });
 
@@ -62,18 +78,31 @@ fn shared() -> std::sync::MutexGuard<'static, Shared> {
     STATE.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn muted(app: &AppHandle) -> (bool, Vec<String>) {
+/// (enabled, muted apps, hide Windows banners) from settings.
+fn options(app: &AppHandle) -> (bool, Vec<String>, bool) {
     let settings = crate::settings::snapshot(app);
-    (settings.notifications, settings.notifications_muted)
+    (
+        settings.notifications,
+        settings.notifications_muted,
+        settings.hide_windows_banners,
+    )
 }
 
 fn snapshot(app: &AppHandle) -> NotificationsState {
-    let (enabled, muted) = muted(app);
+    let (enabled, muted, _) = options(app);
     let state = shared();
+    let mut items: Vec<Item> = state.recent.clone();
+    items.extend(
+        state
+            .all
+            .iter()
+            .filter(|item| !state.recent.iter().any(|r| r.id == item.id))
+            .cloned(),
+    );
     NotificationsState {
         access: state.access,
         items: if enabled {
-            model::visible(&state.all, &muted, LIST_LIMIT)
+            model::visible(&items, &muted, LIST_LIMIT)
         } else {
             Vec::new()
         },
@@ -99,9 +128,14 @@ fn watch(app: &AppHandle) {
         .app_cache_dir()
         .map(|dir| dir.join("icons"))
         .unwrap_or_default();
-    let mut icons = win32::Icons::new(icons_dir);
+    avatar::prune(&icons_dir);
+    let mut icons = win32::Icons::new(icons_dir.clone());
     let mut tracker = model::Tracker::default();
+    // Avatars by notification id; ids already looked up (with or without one).
+    let mut avatars: HashMap<u32, String> = HashMap::new();
+    let mut looked_up: HashSet<u32> = HashSet::new();
     loop {
+        let (enabled, muted, hide_banners) = options(app);
         let access = win32::access();
         let changed_access = {
             let mut state = shared();
@@ -115,9 +149,31 @@ fn watch(app: &AppHandle) {
         }
         if access == Access::Allowed {
             match win32::current(&mut icons) {
-                Ok(items) => {
+                Ok(mut items) => {
+                    // Before anything is taken out of Windows: its database still has it.
+                    let unknown: Vec<u32> = items
+                        .iter()
+                        .map(|i| i.id)
+                        .filter(|id| !looked_up.contains(id))
+                        .collect();
+                    if !unknown.is_empty() {
+                        avatars.extend(avatar::load(&unknown, &icons_dir));
+                        looked_up.extend(unknown);
+                    }
+                    for item in &mut items {
+                        item.avatar = avatars.get(&item.id).cloned();
+                    }
+                    {
+                        let keep: HashSet<u32> = items
+                            .iter()
+                            .map(|i| i.id)
+                            .chain(shared().recent.iter().map(|i| i.id))
+                            .collect();
+                        looked_up.retain(|id| keep.contains(id));
+                        avatars.retain(|id, _| keep.contains(id));
+                    }
                     let fresh = tracker.arrived(&items);
-                    let changed = {
+                    let mut changed = {
                         let mut state = shared();
                         state.apps.extend(items.iter().map(|i| i.app.clone()));
                         let ids = |list: &[Item]| list.iter().map(|i| i.id).collect::<Vec<_>>();
@@ -125,12 +181,21 @@ fn watch(app: &AppHandle) {
                         state.all = items;
                         changed
                     };
-                    let (enabled, muted) = muted(app);
                     for item in fresh {
-                        if enabled && model::allowed(&item.app, &muted) {
-                            log::info!("notification from {}", item.app);
-                            emit(app, "notifications://new", item);
+                        if !(enabled && model::allowed(&item.app, &muted)) {
+                            continue;
                         }
+                        log::info!("notification from {}", item.app);
+                        if hide_banners {
+                            // Taking it out of Windows also closes its banner.
+                            win32::remove(item.id);
+                            let mut state = shared();
+                            state.all.retain(|i| i.id != item.id);
+                            state.recent.insert(0, item.clone());
+                            state.recent.truncate(RECENT_LIMIT);
+                            changed = true;
+                        }
+                        emit(app, "notifications://new", item);
                     }
                     if changed {
                         refresh(app);
@@ -139,7 +204,11 @@ fn watch(app: &AppHandle) {
                 Err(err) => log::warn!("could not read notifications: {err}"),
             }
         }
-        std::thread::sleep(POLL);
+        std::thread::sleep(if enabled && hide_banners {
+            FAST_POLL
+        } else {
+            POLL
+        });
     }
 }
 
@@ -166,13 +235,29 @@ pub fn notifications_get(app: AppHandle) -> AppResult<NotificationsState> {
     Ok(snapshot(&app))
 }
 
-/// Opens the app that sent it and removes it from the Notification Center.
+/// The sending app's id: from the island's own list, or still in the center.
+#[cfg(windows)]
+fn app_id_of(id: u32) -> Option<String> {
+    let known = {
+        let state = shared();
+        state
+            .recent
+            .iter()
+            .chain(&state.all)
+            .find(|item| item.id == id)
+            .map(|item| item.app_id.clone())
+            .filter(|app_id| !app_id.is_empty())
+    };
+    known.or_else(|| win32::app_id(id))
+}
+
+/// Opens the app that sent it and removes it from the island and from Windows.
 #[tauri::command]
 pub fn notifications_open(id: u32, app: AppHandle) -> AppResult<()> {
     #[cfg(windows)]
     {
-        let app_id = win32::app_id(id)
-            .ok_or_else(|| AppError::Unavailable("уведомление уже закрыто".into()))?;
+        let app_id =
+            app_id_of(id).ok_or_else(|| AppError::Unavailable("уведомление уже закрыто".into()))?;
         crate::window::hand_over_focus(&app)?;
         win32::open_app(&app_id)?;
         win32::remove(id);
@@ -183,7 +268,7 @@ pub fn notifications_open(id: u32, app: AppHandle) -> AppResult<()> {
     Ok(())
 }
 
-/// Removes it from the island and the Notification Center.
+/// Removes it from the island and from Windows.
 #[tauri::command]
 pub fn notifications_dismiss(id: u32, app: AppHandle) -> AppResult<()> {
     #[cfg(windows)]
@@ -193,7 +278,11 @@ pub fn notifications_dismiss(id: u32, app: AppHandle) -> AppResult<()> {
 }
 
 fn forget(app: &AppHandle, id: u32) {
-    shared().all.retain(|item| item.id != id);
+    {
+        let mut state = shared();
+        state.all.retain(|item| item.id != id);
+        state.recent.retain(|item| item.id != id);
+    }
     refresh(app);
 }
 

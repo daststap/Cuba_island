@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -70,11 +70,11 @@ const DEFAULT_HOTKEYS: HotkeyStatus = {
   launcherFallback: false,
 };
 const RESULTS: LaunchResult[] = [
-  { id: "calc:6", kind: "calc", title: "6", iconPath: null },
-  { id: "app:Chrome", kind: "app", title: "Google Chrome", iconPath: null },
-  { id: "cmd:lock", kind: "command", title: "", iconPath: null },
-  { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
-  { id: "ask:2+2*2", kind: "ask", title: "2+2*2", iconPath: null },
+  { id: "calc:6", kind: "calc", title: "6", icon: null },
+  { id: "app:Chrome", kind: "app", title: "Google Chrome", icon: null },
+  { id: "cmd:lock", kind: "command", title: "", icon: null },
+  { id: "web:2+2*2", kind: "web", title: "2+2*2", icon: null },
+  { id: "ask:2+2*2", kind: "ask", title: "2+2*2", icon: null },
 ];
 
 const DEFAULT_SETTINGS: Settings = {
@@ -91,8 +91,11 @@ const DEFAULT_SETTINGS: Settings = {
   capsPeek: true,
   downloads: true,
   chatModel: "claude-haiku-5-5",
+  edge: "top",
+  edgeOffset: 0.5,
   notifications: true,
   notificationsMuted: [],
+  hideWindowsBanners: false,
   opacity: 1,
   onboarded: true,
 };
@@ -1109,6 +1112,7 @@ describe("Island", () => {
       body: "Ты где?",
       time: Date.now() - 2 * 60_000,
       icon: null,
+      avatar: null,
     };
 
     it("peeks on a new notification and opens the app on click", async () => {
@@ -1125,6 +1129,17 @@ describe("Island", () => {
         expect(calls).toContainEqual({ cmd: "notifications_open", args: { id: 7 } });
       });
       expect(useIslandStore.getState().state.mode).toBe("compact");
+    });
+
+    it("shows the chat avatar with the app as a badge", async () => {
+      const avatar = "data:image/png;base64,iVBORw==";
+      render(<Island />);
+      await act(async () => {
+        await emit("notifications://new", { ...message, avatar });
+      });
+      const peek = screen.getByRole("button", { name: ru.notifications.open("Telegram") });
+      expect(within(peek).getByTestId("app-badge")).toBeInTheDocument();
+      expect(peek.querySelector("img")?.getAttribute("src")).toBe(avatar);
     });
 
     it("lists notifications on the home tab and dismisses them", async () => {
@@ -1153,6 +1168,19 @@ describe("Island", () => {
       });
     });
 
+    it("turns Windows banners off from settings", async () => {
+      notificationsState = { access: "allowed", items: [], apps: ["Telegram"] };
+      useIslandStore.setState({ state: { mode: "expanded", tab: "settings" } });
+      render(<Island />);
+      fireEvent.click(await screen.findByRole("switch", { name: ru.settings.hideWindowsBanners }));
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({
+          cmd: "settings_set",
+          args: { patch: { hideWindowsBanners: true } },
+        });
+      });
+    });
+
     it("explains how to allow access when Windows denies it", async () => {
       notificationsState = { access: "denied", items: [], apps: [] };
       useIslandStore.setState({ state: { mode: "expanded", tab: "settings" } });
@@ -1160,6 +1188,63 @@ describe("Island", () => {
       fireEvent.click(await screen.findByRole("button", { name: ru.settings.openPrivacy }));
       await vi.waitFor(() => {
         expect(calls.some((c) => c.cmd === "notifications_open_settings")).toBe(true);
+      });
+    });
+  });
+
+  describe("placement", () => {
+    beforeEach(() => {
+      // jsdom has no PointerEvent; mouse events carry the coordinates.
+      vi.stubGlobal("PointerEvent", MouseEvent);
+    });
+
+    const islandElement = () => document.querySelector("[data-edge]") as HTMLElement;
+    const pull = (from: Element, dx = 20) => {
+      fireEvent.pointerDown(from, { button: 0, screenX: 100, screenY: 10 });
+      fireEvent.pointerMove(from, { screenX: 100 + dx, screenY: 10 });
+    };
+    const dragged = () => calls.some((c) => c.cmd === "island_drag_start");
+
+    it("starts a drag when the pill is pulled, not on a tiny wobble", async () => {
+      render(<Island />);
+      const island = islandElement();
+      pull(island, 3);
+      expect(dragged()).toBe(false);
+      pull(island);
+      await vi.waitFor(() => {
+        expect(dragged()).toBe(true);
+      });
+    });
+
+    it("drags the open panel only by its top bar", async () => {
+      useIslandStore.setState({ state: { mode: "expanded", tab: "home" } });
+      render(<Island />);
+      pull(await screen.findByRole("tabpanel"));
+      expect(dragged()).toBe(false);
+      pull(document.querySelector("[data-drag-handle]") as Element);
+      await vi.waitFor(() => {
+        expect(dragged()).toBe(true);
+      });
+      expect(useIslandStore.getState().state.mode).toBe("compact");
+    });
+
+    it("moves to the edge Rust reports", async () => {
+      render(<Island />);
+      expect(islandElement()).toHaveAttribute("data-edge", "top");
+      await act(async () => {
+        await emit("island://placement", { edge: "left", anchor: 300, dragging: false });
+      });
+      expect(islandElement()).toHaveAttribute("data-edge", "left");
+    });
+
+    it("picks the edge in settings", async () => {
+      useIslandStore.setState({ state: { mode: "expanded", tab: "settings" } });
+      render(<Island />);
+      fireEvent.change(await screen.findByRole("combobox", { name: ru.settings.edge }), {
+        target: { value: "bottom" },
+      });
+      await vi.waitFor(() => {
+        expect(calls).toContainEqual({ cmd: "settings_set", args: { patch: { edge: "bottom" } } });
       });
     });
   });

@@ -74,25 +74,7 @@ pub fn fit_within(w: u32, h: u32, max: u32) -> (u32, u32) {
     )
 }
 
-const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-/// Standard base64 with padding (RFC 4648 §4).
-#[cfg_attr(not(windows), allow(dead_code))]
-pub fn base64(data: &[u8]) -> String {
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let b0 = chunk.first().copied().unwrap_or(0);
-        let b1 = chunk.get(1).copied().unwrap_or(0);
-        let b2 = chunk.get(2).copied().unwrap_or(0);
-        let n = (u32::from(b0) << 16) | (u32::from(b1) << 8) | u32::from(b2);
-        let sextet = |shift: u32| char::from(BASE64[((n >> shift) & 63) as usize]);
-        out.push(sextet(18));
-        out.push(sextet(12));
-        out.push(if chunk.len() > 1 { sextet(6) } else { '=' });
-        out.push(if chunk.len() > 2 { sextet(0) } else { '=' });
-    }
-    out
-}
+pub use crate::util::base64;
 
 #[cfg(test)]
 mod tests {

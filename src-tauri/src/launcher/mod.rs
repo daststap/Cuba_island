@@ -42,13 +42,13 @@ fn app_keywords(id: &str) -> &'static str {
 
 /// Built-in commands: id and words they are found by (the label lives in `ru.ts`).
 const COMMANDS: &[(&str, &str)] = &[
-    ("cmd:settings", "Настройки Escape settings"),
+    ("cmd:settings", "Настройки Cuba settings"),
     (
         "cmd:screenshot",
         "Скриншот области экрана снимок screenshot",
     ),
     ("cmd:lock", "Заблокировать компьютер lock"),
-    ("cmd:quit", "Выйти из Escape quit exit"),
+    ("cmd:quit", "Выйти из Cuba quit exit"),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -71,7 +71,8 @@ pub struct LaunchResult {
     pub kind: ResultKind,
     /// App name, calculator answer or the search query; commands are labelled on the frontend.
     pub title: String,
-    pub icon_path: Option<String>,
+    /// App icon as a `data:` URL (the page shows it without the asset protocol).
+    pub icon: Option<String>,
 }
 
 pub struct LauncherShared {
@@ -130,7 +131,7 @@ fn build_results(
             id: format!("calc:{answer}"),
             kind: ResultKind::Calc,
             title: answer,
-            icon_path: None,
+            icon: None,
         });
     }
 
@@ -153,14 +154,14 @@ fn build_results(
                 id: app.id.clone(),
                 kind: ResultKind::App,
                 title: app.name.clone(),
-                icon_path: app.icon.clone(),
+                icon: app.icon.clone(),
             });
         } else {
             results.push(LaunchResult {
                 id: id.to_owned(),
                 kind: ResultKind::Command,
                 title: String::new(),
-                icon_path: None,
+                icon: None,
             });
         }
     }
@@ -169,13 +170,13 @@ fn build_results(
         id: format!("web:{query}"),
         kind: ResultKind::Web,
         title: query.to_owned(),
-        icon_path: None,
+        icon: None,
     });
     results.push(LaunchResult {
         id: format!("ask:{query}"),
         kind: ResultKind::Ask,
         title: query.to_owned(),
-        icon_path: None,
+        icon: None,
     });
     results
 }
@@ -211,7 +212,7 @@ pub fn start(app: &AppHandle, db: Db) -> AppResult<()> {
                             .map(|app| Entry {
                                 id: format!("app:{}", app.parsing_name),
                                 name: app.name,
-                                icon: app.icon.map(|p| p.display().to_string()),
+                                icon: app.icon.and_then(|p| crate::util::data_url(&p)),
                             })
                             .collect();
                         *shared.apps.write().unwrap_or_else(PoisonError::into_inner) =

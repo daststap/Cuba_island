@@ -18,7 +18,7 @@ const FULLSCREEN_POLL: Duration = Duration::from_secs(1);
 const REPOSITION_DEBOUNCE: Duration = Duration::from_millis(150);
 /// Extra logical px around the island that still counts as hovering.
 const HOVER_MARGIN: f64 = 4.0;
-/// Half-width (logical px) of the top-edge zone that expands the island.
+/// Half-width (logical px) of the edge zone, around the island, that expands it.
 const EDGE_HALF_WIDTH: f64 = 150.0;
 
 #[derive(Clone, Serialize)]
@@ -58,8 +58,9 @@ pub fn spawn_cursor_tracker(app: AppHandle, hwnd: Hwnd, shared: Shared) {
                 emit(&app, "island://hover", HoverPayload { inside });
             }
 
-            let now_at_edge = !hidden
-                && in_edge_zone(cursor, placement.monitor, placement.scale, EDGE_HALF_WIDTH);
+            let dragging = shared.dragging.load(Ordering::SeqCst);
+            let now_at_edge =
+                !hidden && !dragging && in_edge_zone(cursor, &placement, EDGE_HALF_WIDTH);
             if now_at_edge && !at_edge {
                 emit(&app, "island://edge-push", ());
             }

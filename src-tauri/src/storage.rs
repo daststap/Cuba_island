@@ -25,7 +25,8 @@ impl Db {
     }
 }
 
-/// Opens `app_data_dir/escape.db` and registers it as managed state.
+/// Opens `app_data_dir/escape.db` (named before the rename to Cuba; kept so
+/// existing data stays) and registers it as managed state.
 pub fn init(app: &AppHandle) -> AppResult<Db> {
     let db = Db::new(open(&app.path().app_data_dir()?.join("escape.db"))?);
     app.manage(db.clone());
@@ -154,7 +155,7 @@ mod tests {
 
     #[test]
     fn opens_an_existing_file_database() {
-        let path = std::env::temp_dir().join(format!("escape-test-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("cuba-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let conn = open(&path).unwrap();

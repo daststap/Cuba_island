@@ -1,4 +1,3 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { ru } from "../../i18n/ru";
 import type { NotificationItem } from "../../ipc/commands";
@@ -19,25 +18,43 @@ function useMinuteClock(): number {
   return now;
 }
 
-function AppIcon({ item, size }: { item: NotificationItem; size: number }) {
+function AppLogo({ item, size }: { item: NotificationItem; size: number }) {
   if (item.icon) {
     return (
-      <img
-        src={convertFileSrc(item.icon)}
-        alt=""
-        width={size}
-        height={size}
-        className="shrink-0 rounded-md"
-      />
+      <img src={item.icon} alt="" width={size} height={size} className="shrink-0 rounded-md" />
     );
   }
   return (
     <span
       aria-hidden
-      className="flex shrink-0 items-center justify-center rounded-md bg-white/15 text-[11px] font-semibold"
-      style={{ width: size, height: size }}
+      className="flex shrink-0 items-center justify-center rounded-md bg-white/15 font-semibold"
+      style={{ width: size, height: size, fontSize: Math.max(8, size * 0.45) }}
     >
       {item.app.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
+/** The chat's avatar with a small app badge in its corner (like on an iPhone),
+ *  or just the app icon when the notification carried no picture. */
+function AppIcon({ item, size }: { item: NotificationItem; size: number }) {
+  if (!item.avatar) return <AppLogo item={item} size={size} />;
+  const badge = Math.round(size * 0.45);
+  return (
+    <span className="relative shrink-0" style={{ width: size, height: size }}>
+      <img
+        src={item.avatar}
+        alt=""
+        width={size}
+        height={size}
+        className="h-full w-full rounded-full object-cover"
+      />
+      <span
+        className="absolute -right-0.5 -bottom-0.5 rounded-[5px] ring-2 ring-black"
+        data-testid="app-badge"
+      >
+        <AppLogo item={item} size={badge} />
+      </span>
     </span>
   );
 }
@@ -55,7 +72,7 @@ export function NotificationPeek() {
       aria-label={ru.notifications.open(item.app)}
       className="flex h-full w-full items-center gap-3 px-4 text-left"
     >
-      <AppIcon item={item} size={28} />
+      <AppIcon item={item} size={32} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[11px] text-[var(--island-muted)]">{item.app}</span>
         <span className="block truncate text-sm font-semibold">

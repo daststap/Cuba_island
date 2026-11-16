@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Escape",
+  "productName": "Cuba",
   "version": "1.0.0",
   "identifier": "com.escape.app",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "island",
-        "title": "Escape",
+        "title": "Cuba",
         "url": "index.html",
         "width": 800,
         "height": 560,
@@ -35,7 +35,7 @@
       "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/clips/**", "$APPCACHE/icons/**", "$APPCACHE/shelf/**"]
+        "scope": ["$APPDATA/clips/**", "$APPCACHE/shelf/**"]
       }
     }
   },
@@ -54,7 +54,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI0MjE2OEZGNkRCNkVDQzEKUldUQjdMWnQvMmdoSkRJYlJsa3VreGJMekJvbmxiQWwzUHZHRGdwQW1oblkxS3JWaDVTM1d4a3MK",
-      "endpoints": ["https://github.com/OWNER/escape/releases/latest/download/latest.json"],
+      "endpoints": ["https://github.com/OWNER/cuba/releases/latest/download/latest.json"],
       "windows": {
         "installMode": "passive"
       }

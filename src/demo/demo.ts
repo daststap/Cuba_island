@@ -71,8 +71,11 @@ const SETTINGS: Settings = {
   capsPeek: true,
   downloads: true,
   chatModel: "claude-haiku-5-5",
+  edge: "top",
+  edgeOffset: 0.5,
   notifications: true,
   notificationsMuted: [],
+  hideWindowsBanners: false,
   opacity: 1,
   onboarded: true,
 };
@@ -150,8 +153,8 @@ const SHELF: ShelfItem[] = [
   },
   {
     id: 3,
-    path: "D:\\projects\\escape",
-    name: "escape",
+    path: "D:\\projects\\cuba",
+    name: "cuba",
     isDir: true,
     size: null,
     missing: false,
@@ -196,8 +199,8 @@ const NOTES: Note[] = [
 ];
 
 const LAUNCH: LaunchResult[] = [
-  { id: "calc:6", kind: "calc", title: "6", iconPath: null },
-  { id: "web:2+2*2", kind: "web", title: "2+2*2", iconPath: null },
+  { id: "calc:6", kind: "calc", title: "6", icon: null },
+  { id: "web:2+2*2", kind: "web", title: "2+2*2", icon: null },
 ];
 
 const NOTIFICATIONS = [
@@ -208,6 +211,7 @@ const NOTIFICATIONS = [
     body: "Встречаемся в 7 у входа?",
     time: Date.now() - 3 * 60_000,
     icon: null,
+    avatar: null,
   },
   {
     id: 2,
@@ -216,6 +220,7 @@ const NOTIFICATIONS = [
     body: "Пришлите, пожалуйста, до пятницы",
     time: Date.now() - 50 * 60_000,
     icon: null,
+    avatar: null,
   },
 ];
 
@@ -357,6 +362,17 @@ export async function setupDemo(scene: Scene): Promise<void> {
             items: scene === "home" ? NOTIFICATIONS : [],
             apps: ["Telegram", "Почта"],
           };
+        case "island_placement": {
+          // `&edge=left` shows the island on another edge.
+          const edge = new URLSearchParams(window.location.search).get("edge");
+          if (!edge) return null;
+          const side = edge === "left" || edge === "right";
+          return {
+            edge,
+            anchor: (side ? window.innerHeight : window.innerWidth) / 2,
+            dragging: false,
+          };
+        }
         case "downloads_list":
           return scene === "home" || scene === "downloads" ? DOWNLOADS : [];
         case "screenshot_frame":

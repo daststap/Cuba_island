@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Escape. The format follows
+All notable changes to Cuba (called Escape until 1.0.0). The format follows
 [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/); versions follow
 [SemVer](https://semver.org/lang/ru/).
 
@@ -39,4 +39,4 @@ All notable changes to Escape. The format follows
   клавиши, размер истории, «Скопировано», непрозрачность.
 - Иконка в трее, вопрос об автозапуске при первом запуске, подписанные автообновления.
 
-[1.0.0]: https://github.com/OWNER/escape/releases/tag/v1.0.0
+[1.0.0]: https://github.com/OWNER/cuba/releases/tag/v1.0.0

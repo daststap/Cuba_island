@@ -85,6 +85,22 @@ pub fn cursor_pos() -> Option<(i32, i32)> {
     Some((point.x, point.y))
 }
 
+/// Whether the primary mouse button is held right now (swapped buttons respected:
+/// `GetAsyncKeyState` reports physical buttons).
+pub fn primary_button_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
+    use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_SWAPBUTTON};
+    // SAFETY: plain queries without pointers.
+    unsafe {
+        let key = if GetSystemMetrics(SM_SWAPBUTTON) != 0 {
+            VK_RBUTTON
+        } else {
+            VK_LBUTTON
+        };
+        GetAsyncKeyState(i32::from(key.0)) as u16 & 0x8000 != 0
+    }
+}
+
 /// Whether a full-screen app is in front on the island's monitor (PLAN.md §4.4).
 ///
 /// `QUNS_BUSY` is deliberately ignored: live wallpapers (Wallpaper Engine) keep it set

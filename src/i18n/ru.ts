@@ -1,6 +1,6 @@
 /** All UI strings live here (PLAN.md §6). */
 export const ru = {
-  appName: "Escape",
+  appName: "Cuba",
   tabs: {
     home: "Главная",
     notes: "Заметки",
@@ -52,12 +52,12 @@ export const ru = {
     webSubtitle: "Яндекс",
     askTitle: (query: string) => `Спросить Claude: ${query}`,
     askSubtitle: "Ответ — во вкладке «Чат»",
-    command: "Команда Escape",
+    command: "Команда Cuba",
     commands: {
-      "cmd:settings": "Настройки Escape",
+      "cmd:settings": "Настройки Cuba",
       "cmd:screenshot": "Скриншот области",
       "cmd:lock": "Заблокировать компьютер",
-      "cmd:quit": "Выйти из Escape",
+      "cmd:quit": "Выйти из Cuba",
     } as Record<string, string>,
   },
   hotkeys: {
@@ -67,6 +67,14 @@ export const ru = {
   },
   settings: {
     monitor: "Монитор",
+    edge: "Край экрана",
+    edgeHint:
+      "Остров можно просто перетащить: зажмите пилюлю (или верхнюю полосу открытой панели) и тяните",
+    edges: { top: "Сверху", bottom: "Снизу", left: "Слева", right: "Справа" } as Record<
+      string,
+      string
+    >,
+    edgeCentre: "По центру",
     primaryMonitor: "Основной",
     monitorLabel: (index: number, w: number, h: number, primary: boolean) =>
       `Монитор ${String(index)} — ${String(w)}×${String(h)}${primary ? " (основной)" : ""}`,
@@ -89,6 +97,9 @@ export const ru = {
     capsPeek: "Показывать Caps Lock",
     downloads: "Показывать загрузки",
     notifications: "Показывать уведомления Windows",
+    hideWindowsBanners: "Скрывать баннеры Windows",
+    hideWindowsBannersHint:
+      "Показанное в острове уведомление сразу убирается из Windows — баннер в углу закрывается почти сразу, а список последних уведомлений хранит сам остров (в Центре уведомлений Windows их не будет)",
     notificationApps: "Уведомления от приложений",
     notificationAppsEmpty: "Список появится, когда приложения пришлют уведомления",
     notificationsDenied:
@@ -99,7 +110,7 @@ export const ru = {
     keySaved: "сохранён в диспетчере учётных данных Windows",
     removeKey: "Удалить ключ",
     opacity: "Непрозрачность острова",
-    version: (v: string) => `Escape ${v}`,
+    version: (v: string) => `Cuba ${v}`,
     checkUpdates: "Проверить обновления",
     upToDate: "Установлена последняя версия",
     installUpdate: (v: string) => `Обновить до ${v}`,
@@ -247,7 +258,7 @@ export const ru = {
     count: (n: number) => `Файлов на полке: ${String(n)}`,
   },
   onboarding: {
-    question: "Запускать Escape вместе с Windows?",
+    question: "Запускать Cuba вместе с Windows?",
     hint: "Изменить можно в любой момент в настройках или через иконку в трее.",
     yes: "Да",
     no: "Нет",

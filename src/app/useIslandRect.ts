@@ -1,12 +1,16 @@
 import { useEffect, type RefObject } from "react";
 import { reportError, setIslandRect, type IslandRect } from "../ipc/commands";
 
+/** How long a move (another edge or position) animates, so the rect follows it. */
+const MOVE_MS = 700;
+
 /**
- * Reports the island element's rectangle to Rust whenever its size changes, so the
- * cursor tracker knows where clicks must not pass through (PLAN.md §4.2).
- * Updates are coalesced to one per animation frame and skipped when unchanged.
+ * Reports the island element's rectangle to Rust whenever its size changes — and,
+ * for `MOVE_MS` after `moveKey` changes, every frame while it slides to a new
+ * place — so the cursor tracker knows where clicks must not pass through
+ * (PLAN.md §4.2). Updates are coalesced to one per frame and skipped when unchanged.
  */
-export function useIslandRect(ref: RefObject<HTMLElement | null>): void {
+export function useIslandRect(ref: RefObject<HTMLElement | null>, moveKey = ""): void {
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
@@ -37,9 +41,20 @@ export function useIslandRect(ref: RefObject<HTMLElement | null>): void {
     const observer = new ResizeObserver(schedule);
     observer.observe(element);
     schedule();
+
+    // A pure move does not resize the element: follow it frame by frame for a while.
+    const until = performance.now() + MOVE_MS;
+    let follow: number | undefined;
+    const step = () => {
+      send();
+      follow = performance.now() < until ? requestAnimationFrame(step) : undefined;
+    };
+    follow = requestAnimationFrame(step);
+
     return () => {
       observer.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
+      if (follow !== undefined) cancelAnimationFrame(follow);
     };
-  }, [ref]);
+  }, [ref, moveKey]);
 }

@@ -1,6 +1,7 @@
 //! API keys live in Windows Credential Manager (encrypted for this user),
 //! never in settings files and never sent to the page. One entry per provider,
-//! shown in Credential Manager as "Escape/<provider>-api-key".
+//! shown in Credential Manager as "Escape/<provider>-api-key" (the app's old
+//! name, kept so keys saved before the rename to Cuba still work).
 
 use windows::core::{HSTRING, PWSTR};
 use windows::Win32::Security::Credentials::{

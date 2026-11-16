@@ -16,8 +16,13 @@ pub struct Item {
     pub body: String,
     /// Unix ms.
     pub time: i64,
-    /// Cached app logo (PNG path), if Windows gave one.
+    /// App logo as a data URL, if Windows gave one.
     pub icon: Option<String>,
+    /// Picture of the sender or chat as a data URL, if the notification carried one.
+    pub avatar: Option<String>,
+    /// The app's AppUserModelID (to open it or change its banner setting).
+    #[serde(skip)]
+    pub app_id: String,
 }
 
 /// Finds notifications that arrived since the previous look.
@@ -86,6 +91,8 @@ mod tests {
             body: String::new(),
             time,
             icon: None,
+            avatar: None,
+            app_id: String::new(),
         }
     }
 

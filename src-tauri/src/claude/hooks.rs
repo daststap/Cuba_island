@@ -1,4 +1,4 @@
-//! Adding / removing Escape's hooks in Claude Code's `~/.claude/settings.json`.
+//! Adding / removing Cuba's hooks in Claude Code's `~/.claude/settings.json`.
 //!
 //! Only entries whose command contains our endpoint are touched; everything else
 //! in the file is preserved (key order included, via serde_json `preserve_order`).
@@ -25,8 +25,8 @@ fn endpoint() -> String {
     format!("127.0.0.1:{PORT}{PATH}")
 }
 
-/// Posts the hook's stdin to Escape; never fails or slows Claude Code down
-/// (1 s timeout, exit 0 when Escape is not running). Works in bash and cmd.
+/// Posts the hook's stdin to Cuba; never fails or slows Claude Code down
+/// (1 s timeout, exit 0 when Cuba is not running). Works in bash and cmd.
 pub fn command() -> String {
     format!(
         "curl -s -m 1 -X POST -H \"Content-Type: application/json\" --data-binary @- http://{} || exit 0",

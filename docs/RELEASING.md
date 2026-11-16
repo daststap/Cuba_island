@@ -1,4 +1,4 @@
-# Releasing Escape
+# Releasing Cuba
 
 Releases are built by [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 when a `v*` tag is pushed. The workflow builds the NSIS installer, signs the update
@@ -11,7 +11,7 @@ and publishes a GitHub release with `latest.json`, which the app checks for upda
    `plugins.updater.endpoints` with your GitHub user or organisation:
 
    ```json
-   "endpoints": ["https://github.com/<you>/escape/releases/latest/download/latest.json"]
+   "endpoints": ["https://github.com/<you>/cuba/releases/latest/download/latest.json"]
    ```
 
    Until this is done the app never contacts GitHub — update checks are skipped.

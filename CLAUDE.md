@@ -1,4 +1,4 @@
-# Escape — conventions for Claude Code
+# Cuba — conventions for Claude Code
 
 Dynamic Island for Windows on Tauri 2. **PLAN.md is the source of truth**: goals, architecture, stages, acceptance criteria.
 

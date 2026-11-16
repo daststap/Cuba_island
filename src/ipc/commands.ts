@@ -126,7 +126,8 @@ export interface LaunchResult {
   kind: "app" | "command" | "calc" | "web" | "ask";
   /** App name, calculator answer or search query (commands are labelled in `ru.ts`). */
   title: string;
-  iconPath: string | null;
+  /** App icon as a `data:` URL. */
+  icon: string | null;
 }
 
 export function launcherSearch(query: string): Promise<LaunchResult[]> {
@@ -173,10 +174,16 @@ export interface Settings {
   downloads: boolean;
   /** One of CHAT_MODELS. */
   chatModel: string;
+  /** Screen edge the island is attached to. */
+  edge: ScreenEdge;
+  /** Position along that edge, 0–1. */
+  edgeOffset: number;
   /** Windows notifications in the island. */
   notifications: boolean;
   /** Apps whose notifications are not shown (display names). */
   notificationsMuted: string[];
+  /** Take shown notifications out of Windows at once (closes their banners). */
+  hideWindowsBanners: boolean;
   /** 0.5–1 */
   opacity: number;
   onboarded: boolean;
@@ -232,7 +239,7 @@ export function claudeHooksStatus(): Promise<ClaudeHooksStatus> {
   return invoke("claude_hooks_status");
 }
 
-/** Adds or removes Escape's hooks in Claude Code's settings.json. */
+/** Adds or removes Cuba's hooks in Claude Code's settings.json. */
 export function claudeHooksSet(enabled: boolean): Promise<ClaudeHooksStatus> {
   return invoke("claude_hooks_set", { enabled });
 }
@@ -506,8 +513,10 @@ export interface NotificationItem {
   body: string;
   /** Unix ms. */
   time: number;
-  /** Cached app logo (file path for `convertFileSrc`). */
+  /** App logo as a `data:` URL. */
   icon: string | null;
+  /** Picture of the sender or chat as a `data:` URL, when the notification carried one. */
+  avatar: string | null;
 }
 
 /** Mirrors `notifications::NotificationsState`. */
@@ -536,4 +545,25 @@ export function notificationsDismiss(id: number): Promise<void> {
 /** Opens Windows' privacy page for notification access. */
 export function notificationsOpenSettings(): Promise<void> {
   return invoke("notifications_open_settings");
+}
+
+/** Mirrors `window::Edge`. */
+export type ScreenEdge = "top" | "bottom" | "left" | "right";
+
+/** Mirrors `window::IslandPlacement`. */
+export interface IslandPlacement {
+  edge: ScreenEdge;
+  /** The island centre along the edge, logical px from the window's left (top/bottom) or top. */
+  anchor: number;
+  /** Being dragged: a floating pill centred in the window. */
+  dragging: boolean;
+}
+
+export function islandPlacement(): Promise<IslandPlacement | null> {
+  return invoke("island_placement");
+}
+
+/** Moves the island with the cursor until the button is released; Rust snaps and saves it. */
+export function islandDragStart(): Promise<void> {
+  return invoke("island_drag_start");
 }

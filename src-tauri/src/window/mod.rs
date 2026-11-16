@@ -1,4 +1,8 @@
 //! The island window: placement, click-through and full-screen hiding (PLAN.md §4.1–4.4).
+//!
+//! The island can sit on any edge of any monitor (dragged there by the user):
+//! the window is placed in the monitor's work area at the chosen edge and offset,
+//! and the page is told where along the edge the island's centre is.
 
 mod geometry;
 #[cfg(windows)]
@@ -12,14 +16,36 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
 
 use crate::error::{AppError, AppResult};
+pub use geometry::Edge;
 use geometry::{IslandRect, PhysRect, Placement};
 
 pub const WINDOW_LABEL: &str = "island";
-/// Fixed logical window size; only the island inside it changes shape (PLAN.md §7).
-const WINDOW_SIZE: (f64, f64) = (800.0, 560.0);
+
+/// Where the island sits, for the page. Mirrored in `src/ipc/commands.ts`.
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IslandPlacement {
+    pub edge: Edge,
+    /// The island's centre along the edge, in logical px from the window's left
+    /// (top/bottom) or top (left/right).
+    pub anchor: f64,
+    /// The island is being dragged: the page shows a floating pill centred in the window.
+    pub dragging: bool,
+}
+
+/// Display settings the window follows.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Display {
+    /// Monitor name (`None` = primary).
+    pub monitor: Option<String>,
+    pub edge: Edge,
+    /// Position along the edge, 0–1.
+    pub offset: f64,
+}
 
 /// State shared between commands and the background threads.
 #[derive(Default)]
@@ -27,9 +53,13 @@ pub struct IslandShared {
     rect: Mutex<IslandRect>,
     placement: Mutex<Option<Placement>>,
     hidden: AtomicBool,
-    /// Settings: target monitor name (`None` = primary) and full-screen hiding.
-    monitor: Mutex<Option<String>>,
+    /// Settings: monitor, edge and offset; full-screen hiding.
+    display: Mutex<Display>,
     hide_in_fullscreen: AtomicBool,
+    /// The user is dragging the island to another place.
+    dragging: AtomicBool,
+    /// What the page was last told.
+    island_placement: Mutex<Option<IslandPlacement>>,
     /// The island accepts keyboard focus (search field, hotkeys).
     input_mode: AtomicBool,
     /// Where focus goes back to when input mode ends; also the paste target.
@@ -55,12 +85,12 @@ impl IslandShared {
 type Shared = Arc<IslandShared>;
 
 /// Positions the window, installs click-through and starts the background watchers.
-pub fn setup(app: &AppHandle, monitor: Option<String>, hide_in_fullscreen: bool) -> AppResult<()> {
+pub fn setup(app: &AppHandle, display: Display, hide_in_fullscreen: bool) -> AppResult<()> {
     let window = app
         .get_webview_window(WINDOW_LABEL)
         .ok_or_else(|| AppError::Internal(format!("window `{WINDOW_LABEL}` is missing")))?;
     let shared: Shared = Arc::new(IslandShared {
-        monitor: Mutex::new(monitor),
+        display: Mutex::new(display),
         hide_in_fullscreen: AtomicBool::new(hide_in_fullscreen),
         ..IslandShared::default()
     });
@@ -247,24 +277,20 @@ pub fn monitors(app: &AppHandle) -> AppResult<Vec<MonitorInfo>> {
         .collect())
 }
 
-/// Applies display settings: which monitor (`None` = primary) and whether to hide
-/// while a full-screen app is in front.
-pub fn apply_display(
-    app: &AppHandle,
-    monitor: Option<String>,
-    hide_in_fullscreen: bool,
-) -> AppResult<()> {
+/// Applies display settings: monitor, edge and offset, and whether to hide while
+/// a full-screen app is in front.
+pub fn apply_display(app: &AppHandle, display: Display, hide_in_fullscreen: bool) -> AppResult<()> {
     let (window, shared) = island(app)?;
     shared
         .hide_in_fullscreen
         .store(hide_in_fullscreen, Ordering::SeqCst);
     let changed = {
         let mut current = shared
-            .monitor
+            .display
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        let changed = *current != monitor;
-        *current = monitor;
+        let changed = *current != display;
+        *current = display;
         changed
     };
     if changed {
@@ -273,15 +299,115 @@ pub fn apply_display(
     Ok(())
 }
 
-/// Places the window at the top centre of the target monitor (PLAN.md §4.3).
+fn tell_page(window: &WebviewWindow, shared: &Shared, placement: IslandPlacement) {
+    *shared
+        .island_placement
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = Some(placement);
+    if let Err(err) = window.emit("island://placement", placement) {
+        log::warn!("failed to emit island://placement: {err}");
+    }
+}
+
+/// Where the island sits now (for a page that just loaded).
+#[tauri::command]
+pub fn island_placement(shared: State<'_, Shared>) -> AppResult<Option<IslandPlacement>> {
+    Ok(*shared
+        .island_placement
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner))
+}
+
+/// Starts moving the island with the cursor until the mouse button is released;
+/// then it snaps to the nearest edge of the monitor under the cursor and the new
+/// place is saved in settings.
+#[tauri::command]
+pub fn island_drag_start(app: AppHandle) -> AppResult<()> {
+    let (window, shared) = island(&app)?;
+    if shared.dragging.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    let edge = shared
+        .display
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .edge;
+    let size = window.outer_size()?;
+    tell_page(
+        &window,
+        &shared,
+        IslandPlacement {
+            edge,
+            anchor: 0.0,
+            dragging: true,
+        },
+    );
+    std::thread::spawn(move || {
+        if let Err(err) = follow_cursor(&app, &window, (size.width, size.height)) {
+            log::error!("island drag failed: {err}");
+        }
+        shared.dragging.store(false, Ordering::SeqCst);
+        if let Err(err) = reposition(&window, &shared) {
+            log::error!("failed to reposition island: {err}");
+        }
+    });
+    Ok(())
+}
+
+/// Moves the window centred on the cursor while the button is held, then saves
+/// the edge nearest to where it was released.
+#[cfg(windows)]
+fn follow_cursor(app: &AppHandle, window: &WebviewWindow, (w, h): (u32, u32)) -> AppResult<()> {
+    let half = (
+        i32::try_from(w / 2).unwrap_or(0),
+        i32::try_from(h / 2).unwrap_or(0),
+    );
+    let mut last = None;
+    while win32::primary_button_down() {
+        if let Some(cursor) = win32::cursor_pos() {
+            if last != Some(cursor) {
+                last = Some(cursor);
+                window.set_position(PhysicalPosition::new(cursor.0 - half.0, cursor.1 - half.1))?;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(16));
+    }
+    let Some(cursor) = win32::cursor_pos() else {
+        return Ok(());
+    };
+    let monitor = app
+        .monitor_from_point(f64::from(cursor.0), f64::from(cursor.1))?
+        .or(window.primary_monitor()?)
+        .ok_or_else(|| AppError::Internal("no monitor under the cursor".into()))?;
+    let area = monitor.work_area();
+    let area = PhysRect {
+        x: area.position.x,
+        y: area.position.y,
+        w: i32::try_from(area.size.width).unwrap_or(i32::MAX),
+        h: i32::try_from(area.size.height).unwrap_or(i32::MAX),
+    };
+    let (edge, offset) = geometry::nearest_edge(area, cursor);
+    log::info!("island dropped on {edge:?} at {offset:.2}");
+    crate::settings::set_placement(app, monitor.name().cloned(), edge, offset)
+}
+
+#[cfg(not(windows))]
+fn follow_cursor(_app: &AppHandle, _window: &WebviewWindow, _size: (u32, u32)) -> AppResult<()> {
+    Ok(())
+}
+
+/// Places the window on the chosen edge of the target monitor (PLAN.md §4.3).
 fn reposition(window: &WebviewWindow, shared: &Shared) -> AppResult<()> {
-    let wanted = shared
-        .monitor
+    if shared.dragging.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    let display = shared
+        .display
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .clone();
     // The chosen monitor if it is connected, otherwise the primary one.
-    let chosen = wanted.and_then(|name| {
+    let chosen = display.monitor.clone().and_then(|name| {
         window
             .available_monitors()
             .ok()?
@@ -301,11 +427,19 @@ fn reposition(window: &WebviewWindow, shared: &Shared) -> AppResult<()> {
         w: i32::try_from(monitor.size().width).unwrap_or(i32::MAX),
         h: i32::try_from(monitor.size().height).unwrap_or(i32::MAX),
     };
-    let size = geometry::physical_size(WINDOW_SIZE, scale);
-    let origin = geometry::window_origin(rect, size.0);
+    let work = monitor.work_area();
+    let area = PhysRect {
+        x: work.position.x,
+        y: work.position.y,
+        w: i32::try_from(work.size.width).unwrap_or(i32::MAX),
+        h: i32::try_from(work.size.height).unwrap_or(i32::MAX),
+    };
+    let edge = display.edge;
+    let size = geometry::physical_size(geometry::window_size(edge), scale);
+    let (origin, centre) = geometry::place(area, edge, display.offset, size);
 
-    window.set_position(PhysicalPosition::new(origin.0, origin.1))?;
     window.set_size(PhysicalSize::new(size.0, size.1))?;
+    window.set_position(PhysicalPosition::new(origin.0, origin.1))?;
 
     *shared
         .placement
@@ -314,7 +448,22 @@ fn reposition(window: &WebviewWindow, shared: &Shared) -> AppResult<()> {
         window_origin: origin,
         scale,
         monitor: rect,
+        edge,
+        centre,
+        flush: geometry::is_flush(rect, area, edge),
     });
-    log::info!("island placed at {origin:?}, size {size:?}, scale {scale}, monitor {rect:?}");
+    let along_origin = if edge.is_side() { origin.1 } else { origin.0 };
+    tell_page(
+        window,
+        shared,
+        IslandPlacement {
+            edge,
+            anchor: f64::from(centre - along_origin) / scale,
+            dragging: false,
+        },
+    );
+    log::info!(
+        "island placed on {edge:?} at {origin:?}, size {size:?}, scale {scale}, monitor {rect:?}"
+    );
     Ok(())
 }
