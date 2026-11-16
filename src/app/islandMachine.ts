@@ -38,7 +38,12 @@ export type IslandEvent =
 
 export const initialIslandState: IslandState = { mode: "compact" };
 
-export function islandReducer(state: IslandState, event: IslandEvent): IslandState {
+/** `lastTab` is where the panel was last open: opening it again without a tab goes back there. */
+export function islandReducer(
+  state: IslandState,
+  event: IslandEvent,
+  lastTab: Tab = "home",
+): IslandState {
   switch (event.type) {
     case "hide":
       return state.mode === "hidden" ? state : { mode: "hidden" };
@@ -52,7 +57,7 @@ export function islandReducer(state: IslandState, event: IslandEvent): IslandSta
       // Opening an alert peek leads to the notes and timer it is about.
       return {
         mode: "expanded",
-        tab: event.tab ?? (state.mode === "peek" && state.kind === "alert" ? "notes" : "home"),
+        tab: event.tab ?? (state.mode === "peek" && state.kind === "alert" ? "notes" : lastTab),
       };
     case "collapse":
       return state.mode === "expanded" || state.mode === "peek" ? { mode: "compact" } : state;

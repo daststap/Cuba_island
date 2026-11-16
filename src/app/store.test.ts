@@ -7,10 +7,19 @@ const mode = () => useIslandStore.getState().state.mode;
 describe("island store peek", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    useIslandStore.setState({ state: initialIslandState });
+    useIslandStore.setState({ state: initialIslandState, lastTab: "home" });
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("reopens the panel on the tab it was closed on", () => {
+    const { dispatch } = useIslandStore.getState();
+    dispatch({ type: "expand" });
+    dispatch({ type: "selectTab", tab: "notes" });
+    dispatch({ type: "collapse" });
+    dispatch({ type: "expand" });
+    expect(useIslandStore.getState().state).toEqual({ mode: "expanded", tab: "notes" });
   });
 
   it("returns to compact after the peek duration", () => {
