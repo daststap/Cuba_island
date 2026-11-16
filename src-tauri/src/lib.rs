@@ -9,6 +9,7 @@ mod hotkeys;
 mod indicators;
 mod launcher;
 mod media;
+mod migrate;
 mod notes;
 mod notifications;
 #[cfg(windows)]
@@ -54,6 +55,8 @@ fn report_error(context: String, message: String, window: tauri::WebviewWindow) 
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Before Tauri creates the app's folders: take over the ones from before the rename.
+    let moved = migrate::move_old_data();
     let result = tauri::Builder::default()
         // single-instance must be registered first so a second launch exits early.
         .plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
@@ -126,8 +129,11 @@ pub fn run() {
             screenshot::screenshot_copy,
             screenshot::screenshot_close,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             log::info!("Cuba {} started", env!("CARGO_PKG_VERSION"));
+            for line in &moved {
+                log::info!("data folders: {line}");
+            }
             let handle = app.handle();
             let settings = settings::load(handle);
             // Early: the island page is already loading and asks for the chat right away.
