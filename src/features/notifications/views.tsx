@@ -1,4 +1,3 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import { ru } from "../../i18n/ru";
 import type { NotificationItem } from "../../ipc/commands";
@@ -22,13 +21,7 @@ function useMinuteClock(): number {
 function AppLogo({ item, size }: { item: NotificationItem; size: number }) {
   if (item.icon) {
     return (
-      <img
-        src={convertFileSrc(item.icon)}
-        alt=""
-        width={size}
-        height={size}
-        className="shrink-0 rounded-md"
-      />
+      <img src={item.icon} alt="" width={size} height={size} className="shrink-0 rounded-md" />
     );
   }
   return (
@@ -50,7 +43,7 @@ function AppIcon({ item, size }: { item: NotificationItem; size: number }) {
   return (
     <span className="relative shrink-0" style={{ width: size, height: size }}>
       <img
-        src={convertFileSrc(item.avatar)}
+        src={item.avatar}
         alt=""
         width={size}
         height={size}

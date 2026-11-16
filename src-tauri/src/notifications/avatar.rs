@@ -79,7 +79,7 @@ fn percent_decode(text: &str) -> String {
 }
 
 /// Reads the avatars of `ids` and keeps copies in `cache_dir` (apps delete
-/// their temporary pictures). Returns id → cached file.
+/// their temporary pictures). Returns id → the picture as a data URL.
 pub fn load(ids: &[u32], cache_dir: &Path) -> HashMap<u32, String> {
     let mut found = HashMap::new();
     if ids.is_empty() {
@@ -125,7 +125,8 @@ pub fn load(ids: &[u32], cache_dir: &Path) -> HashMap<u32, String> {
     found
 }
 
-/// Copies a picture into the cache under a content-based name.
+/// Copies a picture into the cache under a content-based name; returns it as a
+/// data URL (the page shows it without the asset protocol).
 fn keep(source: &Path, cache_dir: &Path) -> Option<String> {
     let size = std::fs::metadata(source).ok()?.len();
     if size == 0 || size > MAX_BYTES {
@@ -142,9 +143,9 @@ fn keep(source: &Path, cache_dir: &Path) -> Option<String> {
     let target = cache_dir.join(format!("avatar-{:016x}.{ext}", hasher.finish()));
     if !target.exists() {
         std::fs::create_dir_all(cache_dir).ok()?;
-        std::fs::write(&target, bytes).ok()?;
+        std::fs::write(&target, &bytes).ok()?;
     }
-    Some(target.display().to_string())
+    crate::util::data_url(&target)
 }
 
 /// Deletes cached avatars older than a week.

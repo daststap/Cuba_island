@@ -512,9 +512,9 @@ export interface NotificationItem {
   body: string;
   /** Unix ms. */
   time: number;
-  /** Cached app logo (file path for `convertFileSrc`). */
+  /** App logo as a `data:` URL. */
   icon: string | null;
-  /** Cached picture of the sender or chat, when the notification carried one. */
+  /** Picture of the sender or chat as a `data:` URL, when the notification carried one. */
   avatar: string | null;
 }
 

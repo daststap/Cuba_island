@@ -77,7 +77,12 @@ impl Icons {
         }
         let path = self.dir.join(format!("notif-{:016x}.png", hash(app_id)));
         let saved = path.exists() || save_logo(notification, &path).is_ok();
-        let result = saved.then(|| path.display().to_string());
+        // A data URL: the page shows it without the asset protocol.
+        let result = if saved {
+            crate::util::data_url(&path)
+        } else {
+            None
+        };
         self.known.insert(app_id.to_owned(), result.clone());
         result
     }

@@ -1132,16 +1132,14 @@ describe("Island", () => {
     });
 
     it("shows the chat avatar with the app as a badge", async () => {
-      // The IPC mock has no asset URLs; a plain path is enough here.
-      const internals = (window as unknown as { __TAURI_INTERNALS__: Record<string, unknown> })
-        .__TAURI_INTERNALS__;
-      internals.convertFileSrc = (path: string) => path;
+      const avatar = "data:image/png;base64,iVBORw==";
       render(<Island />);
       await act(async () => {
-        await emit("notifications://new", { ...message, avatar: "C:/cache/avatar-1.png" });
+        await emit("notifications://new", { ...message, avatar });
       });
       const peek = screen.getByRole("button", { name: ru.notifications.open("Telegram") });
       expect(within(peek).getByTestId("app-badge")).toBeInTheDocument();
+      expect(peek.querySelector("img")?.getAttribute("src")).toBe(avatar);
     });
 
     it("lists notifications on the home tab and dismisses them", async () => {
