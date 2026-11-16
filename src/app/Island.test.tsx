@@ -1221,7 +1221,9 @@ describe("Island", () => {
       render(<Island />);
       pull(await screen.findByRole("tabpanel"));
       expect(dragged()).toBe(false);
-      pull(document.querySelector("[data-drag-handle]") as Element);
+      const grip = screen.getByTestId("drag-grip");
+      expect(grip).toHaveAttribute("title", ru.dragHint);
+      pull(grip);
       await vi.waitFor(() => {
         expect(dragged()).toBe(true);
       });
